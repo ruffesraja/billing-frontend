@@ -380,11 +380,20 @@ const InvoiceForm = () => {
                       `}
                     >
                       <option value="">Select a product</option>
-                      {products.map(product => (
-                        <option key={product.id} value={product.id}>
-                          {product.name} - {formatCurrency(product.unitPrice)}
-                        </option>
-                      ))}
+                      {products.map(product => {
+                        const isSelectedElsewhere = formData.items.some(
+                          (itm, idx) => idx !== index && itm.productId === product.id.toString()
+                        );
+                        return (
+                          <option
+                            key={product.id}
+                            value={product.id}
+                            disabled={isSelectedElsewhere}
+                          >
+                            {product.name} - {formatCurrency(product.unitPrice)}
+                          </option>
+                        );
+                      })}
                     </select>
                     {errors[`item_${index}_product`] && (
                       <p className="text-sm text-red-600 mt-1">{errors[`item_${index}_product`]}</p>
