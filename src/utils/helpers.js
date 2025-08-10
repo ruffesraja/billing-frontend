@@ -3,11 +3,11 @@
 // Format currency
 export const formatCurrency = (amount) => {
   if (amount === null || amount === undefined || isNaN(amount)) {
-    return '$0.00';
+    return '₹0.00';
   }
-  return new Intl.NumberFormat('en-US', {
+  return new Intl.NumberFormat('en-IN', {
     style: 'currency',
-    currency: 'USD',
+    currency: 'INR',
   }).format(Number(amount));
 };
 

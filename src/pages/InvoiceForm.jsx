@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { invoiceAPI, customerAPI, productAPI } from '../services/api';
-import { formatDateForInput, calculateInvoiceTotals, formatCurrency } from '../utils/helpers';
+import { invoiceAPI, productAPI } from '../services/api';
+import { formatDateForInput, formatCurrency } from '../utils/helpers';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
@@ -28,469 +28,687 @@ const TrashIcon = () => (
 const InvoiceForm = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const isEditing = !!id;
+  const isEditing = Boolean(id);
 
+  // Form state
   const [formData, setFormData] = useState({
-    customerId: '',
+    // Customer details (entered directly)
+    customerName: '',
+    customerEmail: '',
+    customerPhone: '',
+    customerAddress: '',
+    customerGstNumber: '',
+    
+    // Invoice details
     invoiceDate: formatDateForInput(new Date()),
-    dueDate: '',
-    status: 'UNPAID',
+    dueDate: formatDateForInput(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)), // 30 days from now
+    status: 'UNPAID', // Default status
     notes: '',
-    items: [{ productId: '', quantity: 1 }],
+    
+    // GST settings
+    gstApplicable: false,
+    gstPercent: 18, // Default GST rate
+    
+    // Additional charges
+    transportChargesApplicable: false,
+    transportChargesLabel: 'Transport Charges',
+    transportCharges: 0,
+    
+    // Line items with dynamic pricing (no per-item tax)
+    items: [{
+      productId: '',
+      productName: '',
+      productDescription: '',
+      quantity: 1,
+      unitPrice: 0,
+      isCustomProduct: false
+    }]
   });
 
-  const [customers, setCustomers] = useState([]);
   const [products, setProducts] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState({});
-  const [error, setError] = useState(null);
 
+  // Load products and invoice data (if editing)
   useEffect(() => {
-    fetchInitialData();
-  }, []);
+    const loadData = async () => {
+      try {
+        setLoading(true);
+        
+        // Load products
+        const productsData = await productAPI.getAll();
+        setProducts(productsData);
 
-  useEffect(() => {
-    if (isEditing && id) {
-      fetchInvoice();
-    }
+        // Load invoice data if editing
+        if (isEditing) {
+          const invoiceData = await invoiceAPI.getById(id);
+          setFormData({
+            customerName: invoiceData.customerName || '',
+            customerEmail: invoiceData.customerEmail || '',
+            customerPhone: invoiceData.customerPhone || '',
+            customerAddress: invoiceData.customerAddress || '',
+            customerGstNumber: invoiceData.customerGstNumber || '',
+            invoiceDate: formatDateForInput(new Date(invoiceData.invoiceDate)),
+            dueDate: formatDateForInput(new Date(invoiceData.dueDate)),
+            status: invoiceData.status || 'UNPAID',
+            notes: invoiceData.notes || '',
+            gstApplicable: invoiceData.gstApplicable || false,
+            gstPercent: invoiceData.gstApplicable && invoiceData.cgstRate ? 
+                        (invoiceData.cgstRate * 2) : 18,
+            transportChargesApplicable: !!(invoiceData.transportCharges && invoiceData.transportCharges > 0),
+            transportChargesLabel: invoiceData.transportChargesLabel || 'Transport Charges',
+            transportCharges: invoiceData.transportCharges || 0,
+            items: invoiceData.lineItems?.map(item => ({
+              productId: item.productId,
+              productName: item.productName,
+              productDescription: item.productDescription || '',
+              quantity: item.quantity,
+              unitPrice: item.unitPrice,
+              isCustomProduct: item.isCustomProduct || false
+            })) || [{
+              productId: '',
+              productName: '',
+              productDescription: '',
+              quantity: 1,
+              unitPrice: 0,
+              isCustomProduct: false
+            }]
+          });
+        }
+      } catch (error) {
+        console.error('Error loading data:', error);
+        setErrors({ general: error.message });
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadData();
   }, [id, isEditing]);
 
-  const fetchInitialData = async () => {
-    try {
-      const [customersData, productsData] = await Promise.all([
-        customerAPI.getAll(),
-        productAPI.getAll(),
-      ]);
-      setCustomers(customersData);
-      setProducts(productsData);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
+  // Handle form field changes
+  const handleInputChange = (field, value) => {
+    setFormData(prev => ({
+      ...prev,
+      [field]: value
+    }));
+    
+    // Clear field error when user starts typing
+    if (errors[field]) {
+      setErrors(prev => ({
+        ...prev,
+        [field]: null
+      }));
     }
   };
 
-  const fetchInvoice = async () => {
-    try {
-      const invoice = await invoiceAPI.getById(id);
-      setFormData({
-        customerId: invoice.customer?.id?.toString() || '',
-        invoiceDate: formatDateForInput(invoice.invoiceDate),
-        dueDate: formatDateForInput(invoice.dueDate),
-        status: invoice.status || 'UNPAID',
-        notes: invoice.notes || '',
-        items: invoice.invoiceItems?.map(item => ({
-          productId: item.product?.id?.toString() || '',
-          quantity: item.quantity || 1,
-        })) || [{ productId: '', quantity: 1 }],
-      });
-    } catch (err) {
-      setError(err.message);
+  // Handle line item changes
+  const handleItemChange = (index, field, value) => {
+    setFormData(prev => ({
+      ...prev,
+      items: prev.items.map((item, i) => 
+        i === index ? { ...item, [field]: value } : item
+      )
+    }));
+  };
+
+  // Handle product selection
+  const handleProductSelect = (index, productId) => {
+    const selectedProduct = products.find(p => p.id === parseInt(productId));
+    if (selectedProduct) {
+      handleItemChange(index, 'productId', productId);
+      handleItemChange(index, 'productName', selectedProduct.name);
     }
   };
 
+  // Add new line item
+  const addLineItem = () => {
+    setFormData(prev => ({
+      ...prev,
+      items: [...prev.items, {
+        productId: '',
+        productName: '',
+        productDescription: '',
+        quantity: 1,
+        unitPrice: 0,
+        isCustomProduct: false
+      }]
+    }));
+  };
+
+  // Remove line item
+  const removeLineItem = (index) => {
+    if (formData.items.length > 1) {
+      setFormData(prev => ({
+        ...prev,
+        items: prev.items.filter((_, i) => i !== index)
+      }));
+    }
+  };
+
+  // Calculate line totals (no tax at line level)
+  const calculateLineTotal = (item) => {
+    return item.quantity * item.unitPrice;
+  };
+
+  // Calculate invoice totals with overall GST - matches backend calculation exactly
+  const calculateTotals = () => {
+    const subtotal = formData.items.reduce((sum, item) => 
+      sum + (item.quantity * item.unitPrice), 0
+    );
+    
+    let cgst = 0;
+    let sgst = 0;
+    let totalGst = 0;
+    
+    if (formData.gstApplicable && formData.gstPercent > 0) {
+      // Calculate CGST and SGST separately to match backend logic
+      const cgstRate = formData.gstPercent / 2;
+      const sgstRate = formData.gstPercent / 2;
+      
+      // Use same rounding as backend (2 decimal places, HALF_UP)
+      cgst = Math.round((subtotal * cgstRate / 100) * 100) / 100;
+      sgst = Math.round((subtotal * sgstRate / 100) * 100) / 100;
+      totalGst = cgst + sgst;
+    }
+    
+    // Add transport charges if applicable
+    const transportCharges = formData.transportChargesApplicable ? 
+      (parseFloat(formData.transportCharges) || 0) : 0;
+    
+    const total = subtotal + totalGst + transportCharges;
+    
+    return { subtotal, cgst, sgst, totalGst, transportCharges, total };
+  };
+
+  // Validate form
   const validateForm = () => {
     const newErrors = {};
 
-    if (!formData.customerId) {
-      newErrors.customerId = 'Customer is required';
+    // Customer validation
+    if (!formData.customerName.trim()) {
+      newErrors.customerName = 'Customer name is required';
+    }
+    if (formData.customerEmail && !/\S+@\S+\.\S+/.test(formData.customerEmail)) {
+      newErrors.customerEmail = 'Please enter a valid email address';
+    }
+    if (!formData.customerPhone.trim()) {
+      newErrors.customerPhone = 'Customer phone is required';
     }
 
+    // Invoice dates validation
     if (!formData.invoiceDate) {
       newErrors.invoiceDate = 'Invoice date is required';
     }
-
     if (!formData.dueDate) {
       newErrors.dueDate = 'Due date is required';
     }
 
-    if (formData.items.length === 0) {
-      newErrors.items = 'At least one item is required';
-    } else {
-      formData.items.forEach((item, index) => {
-        if (!item.productId) {
-          newErrors[`item_${index}_product`] = 'Product is required';
-        }
-        if (!item.quantity || item.quantity < 1) {
-          newErrors[`item_${index}_quantity`] = 'Quantity must be at least 1';
-        }
-      });
+    // GST validation
+    if (formData.gstApplicable && (!formData.gstPercent || formData.gstPercent < 0)) {
+      newErrors.gstPercent = 'GST percent must be greater than or equal to 0';
     }
+
+    // Line items validation
+    formData.items.forEach((item, index) => {
+      if (!item.isCustomProduct && !item.productId) {
+        newErrors[`item_${index}_product`] = 'Please select a product or mark as custom';
+      }
+      if (!item.productName.trim()) {
+        newErrors[`item_${index}_name`] = 'Product name is required';
+      }
+      if (item.quantity <= 0) {
+        newErrors[`item_${index}_quantity`] = 'Quantity must be greater than 0';
+      }
+      if (item.unitPrice <= 0) {
+        newErrors[`item_${index}_price`] = 'Unit price must be greater than 0';
+      }
+    });
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
+  // Handle form submission
   const handleSubmit = async (e) => {
     e.preventDefault();
-
+    
     if (!validateForm()) {
       return;
     }
 
     try {
       setSubmitting(true);
-      const submitData = {
-        customerId: parseInt(formData.customerId),
+      
+      const invoiceData = {
+        customerName: formData.customerName,
+        customerEmail: formData.customerEmail,
+        customerPhone: formData.customerPhone,
+        customerAddress: formData.customerAddress,
+        customerGstNumber: formData.customerGstNumber,
         invoiceDate: formData.invoiceDate,
         dueDate: formData.dueDate,
+        status: formData.status,
         notes: formData.notes,
+        gstApplicable: formData.gstApplicable,
+        cgstRate: formData.gstApplicable ? parseFloat(formData.gstPercent) / 2 : null,
+        sgstRate: formData.gstApplicable ? parseFloat(formData.gstPercent) / 2 : null,
+        transportChargesLabel: formData.transportChargesApplicable ? formData.transportChargesLabel : null,
+        transportCharges: formData.transportChargesApplicable ? parseFloat(formData.transportCharges) || 0 : null,
         items: formData.items.map(item => ({
-          productId: parseInt(item.productId),
+          productId: item.isCustomProduct ? null : (item.productId ? parseInt(item.productId) : null),
+          productName: item.productName,
+          productDescription: item.productDescription,
           quantity: parseInt(item.quantity),
-        })),
+          unitPrice: parseFloat(item.unitPrice),
+          isCustomProduct: item.isCustomProduct
+        }))
       };
 
+      let result;
       if (isEditing) {
-        submitData.status = formData.status;
-        await invoiceAPI.update(id, submitData);
+        result = await invoiceAPI.update(id, invoiceData);
       } else {
-        await invoiceAPI.create(submitData);
+        result = await invoiceAPI.create(invoiceData);
       }
 
-      navigate('/invoices');
-    } catch (err) {
-      setErrors({ submit: err.message });
+      navigate(`/invoices/${result.id}`);
+    } catch (error) {
+      console.error('Error saving invoice:', error);
+      setErrors({ general: error.message });
     } finally {
       setSubmitting(false);
     }
   };
 
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
-
-    if (errors[name]) {
-      setErrors(prev => ({
-        ...prev,
-        [name]: ''
-      }));
-    }
-  };
-
-  const handleItemChange = (index, field, value) => {
-    const newItems = [...formData.items];
-    newItems[index] = {
-      ...newItems[index],
-      [field]: value
-    };
-    setFormData(prev => ({
-      ...prev,
-      items: newItems
-    }));
-
-    // Clear errors
-    const errorKey = `item_${index}_${field}`;
-    if (errors[errorKey]) {
-      setErrors(prev => ({
-        ...prev,
-        [errorKey]: ''
-      }));
-    }
-  };
-
-  const addItem = () => {
-    setFormData(prev => ({
-      ...prev,
-      items: [...prev.items, { productId: '', quantity: 1 }]
-    }));
-  };
-
-  const removeItem = (index) => {
-    if (formData.items.length > 1) {
-      const newItems = formData.items.filter((_, i) => i !== index);
-      setFormData(prev => ({
-        ...prev,
-        items: newItems
-      }));
-    }
-  };
-
-  const calculatePreviewTotals = () => {
-    const items = formData.items.map(item => {
-      const product = products.find(p => p.id.toString() === item.productId);
-      if (!product) return null;
-      
-      return {
-        quantity: parseInt(item.quantity) || 0,
-        unitPrice: product.unitPrice,
-        taxPercent: product.taxPercent,
-      };
-    }).filter(Boolean);
-
-    return calculateInvoiceTotals(items);
-  };
+  const totals = calculateTotals();
 
   if (loading) {
     return (
-      <div className="flex justify-center items-center h-64">
-        <LoadingSpinner size="lg" />
+      <div className="flex justify-center items-center min-h-64">
+        <LoadingSpinner />
       </div>
     );
   }
-
-  if (error) {
-    return (
-      <div className="space-y-4">
-        <div className="bg-red-50 border border-red-200 rounded-md p-4">
-          <div className="text-red-800">
-            <h3 className="font-medium">Error</h3>
-            <p className="mt-1 text-sm">{error}</p>
-          </div>
-        </div>
-        <Link to="/invoices">
-          <Button variant="outline">
-            <ArrowLeftIcon />
-            <span className="ml-2">Back to Invoices</span>
-          </Button>
-        </Link>
-      </div>
-    );
-  }
-
-  const totals = calculatePreviewTotals();
 
   return (
-    <div className="space-y-6">
+    <div className="max-w-4xl mx-auto space-y-6">
       {/* Header */}
-      <div className="flex items-center space-x-4">
-        <Link to="/invoices">
-          <Button variant="outline" size="sm">
-            <ArrowLeftIcon />
-          </Button>
-        </Link>
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">
-            {isEditing ? 'Edit Invoice' : 'Create Invoice'}
-          </h1>
-          <p className="mt-1 text-sm text-gray-600">
-            {isEditing ? 'Update invoice details' : 'Create a new invoice for your customer'}
-          </p>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center space-x-4">
+          <Link to="/invoices">
+            <Button variant="secondary">
+              <ArrowLeftIcon />
+            </Button>
+          </Link>
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">
+              {isEditing ? 'Edit Invoice' : 'Create New Invoice'}
+            </h1>
+            <p className="text-gray-600">
+              {isEditing ? 'Update invoice details' : 'Fill in the details to create a new invoice'}
+            </p>
+          </div>
         </div>
       </div>
 
-      {/* Form */}
-      <div className="bg-white shadow rounded-lg">
-        <form onSubmit={handleSubmit} className="p-6 space-y-6">
-          {errors.submit && (
-            <div className="bg-red-50 border border-red-200 rounded-md p-3">
-              <p className="text-sm text-red-800">{errors.submit}</p>
-            </div>
-          )}
+      {/* Error Display */}
+      {errors.general && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <p className="text-red-800">{errors.general}</p>
+        </div>
+      )}
 
-          {/* Basic Information */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-1">
-              <label className="block text-sm font-medium text-gray-700">
-                Customer <span className="text-red-500">*</span>
+      <form onSubmit={handleSubmit} className="space-y-8">
+        {/* Customer Details Section */}
+        <div className="bg-white rounded-lg shadow p-6">
+          <h2 className="text-xl font-semibold text-gray-900 mb-4">Customer Details</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Input
+              label="Customer Name *"
+              value={formData.customerName}
+              onChange={(e) => handleInputChange('customerName', e.target.value)}
+              error={errors.customerName}
+              placeholder="Enter customer name"
+            />
+            <Input
+              label="Email Address"
+              type="email"
+              value={formData.customerEmail}
+              onChange={(e) => handleInputChange('customerEmail', e.target.value)}
+              error={errors.customerEmail}
+              placeholder="customer@example.com (optional)"
+            />
+            <Input
+              label="Phone Number *"
+              value={formData.customerPhone}
+              onChange={(e) => handleInputChange('customerPhone', e.target.value)}
+              error={errors.customerPhone}
+              placeholder="+1-555-0123"
+            />
+            <Input
+              label="Address"
+              value={formData.customerAddress}
+              onChange={(e) => handleInputChange('customerAddress', e.target.value)}
+              placeholder="Customer address"
+            />
+            <Input
+              label="GST Number (Optional)"
+              value={formData.customerGstNumber}
+              onChange={(e) => handleInputChange('customerGstNumber', e.target.value)}
+              placeholder="Customer GST number (if applicable)"
+            />
+          </div>
+        </div>
+
+        {/* Invoice Details Section */}
+        <div className="bg-white rounded-lg shadow p-6">
+          <h2 className="text-xl font-semibold text-gray-900 mb-4">Invoice Details</h2>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <Input
+              label="Invoice Date *"
+              type="date"
+              value={formData.invoiceDate}
+              onChange={(e) => handleInputChange('invoiceDate', e.target.value)}
+              error={errors.invoiceDate}
+            />
+            <Input
+              label="Due Date *"
+              type="date"
+              value={formData.dueDate}
+              onChange={(e) => handleInputChange('dueDate', e.target.value)}
+              error={errors.dueDate}
+            />
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Status *
               </label>
               <select
-                name="customerId"
-                value={formData.customerId}
-                onChange={handleChange}
-                required
-                className={`
-                  block w-full px-3 py-2 border rounded-md shadow-sm 
-                  focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500
-                  ${errors.customerId ? 'border-red-300 focus:ring-red-500 focus:border-red-500' : 'border-gray-300'}
-                `}
+                value={formData.status}
+                onChange={(e) => handleInputChange('status', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               >
-                <option value="">Select a customer</option>
-                {customers.map(customer => (
-                  <option key={customer.id} value={customer.id}>
-                    {customer.name} - {customer.email}
-                  </option>
-                ))}
+                <option value="UNPAID">Unpaid</option>
+                <option value="PAID">Paid</option>
+                <option value="OVERDUE">Overdue</option>
               </select>
-              {errors.customerId && (
-                <p className="text-sm text-red-600">{errors.customerId}</p>
-              )}
             </div>
+            <div className="md:col-span-1">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Notes
+              </label>
+              <textarea
+                value={formData.notes}
+                onChange={(e) => handleInputChange('notes', e.target.value)}
+                rows={3}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                placeholder="Additional notes..."
+              />
+            </div>
+          </div>
+        </div>
 
-            {isEditing && (
-              <div className="space-y-1">
-                <label className="block text-sm font-medium text-gray-700">
-                  Status
-                </label>
-                <select
-                  name="status"
-                  value={formData.status}
-                  onChange={handleChange}
-                  className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                >
-                  <option value="PAID">Paid</option>
-                  <option value="UNPAID">Unpaid</option>
-                  <option value="OVERDUE">Overdue</option>
-                </select>
+        {/* GST Settings Section */}
+        <div className="bg-white rounded-lg shadow p-6">
+          <h2 className="text-xl font-semibold text-gray-900 mb-4">GST Settings</h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="flex items-center space-x-3">
+              <input
+                type="checkbox"
+                id="gstApplicable"
+                checked={formData.gstApplicable}
+                onChange={(e) => handleInputChange('gstApplicable', e.target.checked)}
+                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+              />
+              <label htmlFor="gstApplicable" className="text-sm font-medium text-gray-700">
+                Apply GST to this invoice
+              </label>
+            </div>
+            {formData.gstApplicable && (
+              <Input
+                label="GST Percentage *"
+                type="number"
+                step="0.01"
+                min="0"
+                max="100"
+                value={formData.gstPercent}
+                onChange={(e) => handleInputChange('gstPercent', e.target.value)}
+                error={errors.gstPercent}
+                placeholder="18.00"
+              />
+            )}
+            {formData.gstApplicable && (
+              <div className="text-sm text-gray-600">
+                <p>GST will be split equally:</p>
+                <p>• CGST: {(formData.gstPercent / 2).toFixed(2)}%</p>
+                <p>• SGST: {(formData.gstPercent / 2).toFixed(2)}%</p>
               </div>
             )}
           </div>
+        </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <Input
-              label="Invoice Date"
-              name="invoiceDate"
-              type="date"
-              required
-              value={formData.invoiceDate}
-              onChange={handleChange}
-              error={errors.invoiceDate}
-            />
+        {/* Transport Charges Section */}
+        <div className="bg-white rounded-lg shadow p-6">
+          <h2 className="text-xl font-semibold text-gray-900 mb-4">Additional Charges</h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="flex items-center space-x-3">
+              <input
+                type="checkbox"
+                id="transportChargesApplicable"
+                checked={formData.transportChargesApplicable}
+                onChange={(e) => handleInputChange('transportChargesApplicable', e.target.checked)}
+                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+              />
+              <label htmlFor="transportChargesApplicable" className="text-sm font-medium text-gray-700">
+                Apply Transport Charges
+              </label>
+            </div>
+            
+            {formData.transportChargesApplicable && (
+              <>
+                <Input
+                  label="Transport Charges Label"
+                  value={formData.transportChargesLabel}
+                  onChange={(e) => handleInputChange('transportChargesLabel', e.target.value)}
+                  placeholder="Transport Charges"
+                />
+                <Input
+                  label="Transport Charges Amount"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={formData.transportCharges}
+                  onChange={(e) => handleInputChange('transportCharges', e.target.value)}
+                  placeholder="0.00"
+                />
+              </>
+            )}
+          </div>
+        </div>
 
-            <Input
-              label="Due Date"
-              name="dueDate"
-              type="date"
-              required
-              value={formData.dueDate}
-              onChange={handleChange}
-              error={errors.dueDate}
-            />
+        {/* Line Items Section */}
+        <div className="bg-white rounded-lg shadow p-6">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-xl font-semibold text-gray-900">Line Items</h2>
+            <Button type="button" onClick={addLineItem} variant="secondary">
+              <PlusIcon />
+              <span className="ml-2">Add Item</span>
+            </Button>
           </div>
 
-          {/* Invoice Items */}
           <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-medium text-gray-900">Invoice Items</h3>
-              <Button type="button" variant="outline" size="sm" onClick={addItem}>
-                <PlusIcon />
-                <span className="ml-2">Add Item</span>
-              </Button>
-            </div>
-
-            <div className="space-y-4">
-              {formData.items.map((item, index) => (
-                <div key={index} className="grid grid-cols-1 md:grid-cols-4 gap-4 p-4 border border-gray-200 rounded-lg">
+            {formData.items.map((item, index) => (
+              <div key={index} className="border border-gray-200 rounded-lg p-4">
+                <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
+                  {/* Custom Product Checkbox */}
                   <div className="md:col-span-2">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Product <span className="text-red-500">*</span>
-                    </label>
-                    <select
-                      value={item.productId}
-                      onChange={(e) => handleItemChange(index, 'productId', e.target.value)}
-                      required
-                      className={`
-                        block w-full px-3 py-2 border rounded-md shadow-sm 
-                        focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500
-                        ${errors[`item_${index}_product`] ? 'border-red-300 focus:ring-red-500 focus:border-red-500' : 'border-gray-300'}
-                      `}
-                    >
-                      <option value="">Select a product</option>
-                      {products.map(product => {
-                        const isSelectedElsewhere = formData.items.some(
-                          (itm, idx) => idx !== index && itm.productId === product.id.toString()
-                        );
-                        return (
-                          <option
-                            key={product.id}
-                            value={product.id}
-                            disabled={isSelectedElsewhere}
-                          >
-                            {product.name} - {formatCurrency(product.unitPrice)}
-                          </option>
-                        );
-                      })}
-                    </select>
+                    <div className="flex items-center space-x-3 mb-2">
+                      <input
+                        type="checkbox"
+                        id={`customProduct_${index}`}
+                        checked={item.isCustomProduct}
+                        onChange={(e) => {
+                          handleItemChange(index, 'isCustomProduct', e.target.checked);
+                          if (e.target.checked) {
+                            handleItemChange(index, 'productId', '');
+                          }
+                        }}
+                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                      />
+                      <label htmlFor={`customProduct_${index}`} className="text-sm font-medium text-gray-700">
+                        Custom Product
+                      </label>
+                    </div>
+                    
+                    {!item.isCustomProduct ? (
+                      <>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Product *
+                        </label>
+                        <select
+                          value={item.productId}
+                          onChange={(e) => handleProductSelect(index, e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                          <option value="">Select a product</option>
+                          {products.map(product => (
+                            <option key={product.id} value={product.id}>
+                              {product.name}
+                            </option>
+                          ))}
+                        </select>
+                      </>
+                    ) : (
+                      <Input
+                        label="Product Name *"
+                        value={item.productName}
+                        onChange={(e) => handleItemChange(index, 'productName', e.target.value)}
+                        error={errors[`item_${index}_name`]}
+                        placeholder="Enter custom product name"
+                      />
+                    )}
                     {errors[`item_${index}_product`] && (
-                      <p className="text-sm text-red-600 mt-1">{errors[`item_${index}_product`]}</p>
+                      <p className="text-red-600 text-sm mt-1">{errors[`item_${index}_product`]}</p>
                     )}
                   </div>
 
+                  {/* Quantity */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Quantity <span className="text-red-500">*</span>
-                    </label>
-                    <input
+                    <Input
+                      label="Quantity *"
                       type="number"
                       min="1"
                       value={item.quantity}
                       onChange={(e) => handleItemChange(index, 'quantity', e.target.value)}
-                      required
-                      className={`
-                        block w-full px-3 py-2 border rounded-md shadow-sm 
-                        focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500
-                        ${errors[`item_${index}_quantity`] ? 'border-red-300 focus:ring-red-500 focus:border-red-500' : 'border-gray-300'}
-                      `}
+                      error={errors[`item_${index}_quantity`]}
                     />
-                    {errors[`item_${index}_quantity`] && (
-                      <p className="text-sm text-red-600 mt-1">{errors[`item_${index}_quantity`]}</p>
-                    )}
                   </div>
 
-                  <div className="flex items-end">
+                  {/* Unit Price */}
+                  <div>
+                    <Input
+                      label="Unit Price *"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={item.unitPrice}
+                      onChange={(e) => handleItemChange(index, 'unitPrice', e.target.value)}
+                      error={errors[`item_${index}_price`]}
+                    />
+                  </div>
+
+                  {/* Line Total & Actions */}
+                  <div className="md:col-span-2 flex items-end justify-between">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Line Total
+                      </label>
+                      <p className="text-lg font-semibold text-gray-900">
+                        {formatCurrency(calculateLineTotal(item))}
+                      </p>
+                      {item.isCustomProduct && (
+                        <span className="inline-block bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full mt-1">
+                          Custom
+                        </span>
+                      )}
+                    </div>
                     {formData.items.length > 1 && (
                       <Button
                         type="button"
+                        onClick={() => removeLineItem(index)}
                         variant="danger"
                         size="sm"
-                        onClick={() => removeItem(index)}
                       >
                         <TrashIcon />
                       </Button>
                     )}
                   </div>
                 </div>
-              ))}
-            </div>
-          </div>
 
-          {/* Invoice Preview */}
-          {totals.total > 0 && (
-            <div className="bg-gray-50 p-4 rounded-lg">
-              <h4 className="font-medium text-gray-900 mb-3">Invoice Preview</h4>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span>Subtotal:</span>
-                  <span>{formatCurrency(totals.subtotal)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Tax:</span>
-                  <span>{formatCurrency(totals.totalTax)}</span>
-                </div>
-                <div className="flex justify-between font-medium text-base border-t pt-2">
-                  <span>Total:</span>
-                  <span>{formatCurrency(totals.total)}</span>
+                {/* Product Description */}
+                <div className="mt-4">
+                  <Input
+                    label="Description"
+                    value={item.productDescription}
+                    onChange={(e) => handleItemChange(index, 'productDescription', e.target.value)}
+                    placeholder="Product description (optional)"
+                  />
                 </div>
               </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Invoice Totals */}
+        <div className="bg-white rounded-lg shadow p-6">
+          <h2 className="text-xl font-semibold text-gray-900 mb-4">Invoice Summary</h2>
+          <div className="space-y-2 max-w-sm ml-auto">
+            <div className="flex justify-between">
+              <span className="text-gray-600">Subtotal:</span>
+              <span className="font-medium">{formatCurrency(totals.subtotal)}</span>
             </div>
-          )}
-
-          {/* Notes */}
-          <div className="space-y-1">
-            <label className="block text-sm font-medium text-gray-700">
-              Notes
-            </label>
-            <textarea
-              name="notes"
-              rows={3}
-              value={formData.notes}
-              onChange={handleChange}
-              placeholder="Additional notes or terms..."
-              className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            />
+            {formData.gstApplicable && totals.totalGst > 0 && (
+              <>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">CGST ({(formData.gstPercent / 2).toFixed(2)}%):</span>
+                  <span className="font-medium">{formatCurrency(totals.cgst)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">SGST ({(formData.gstPercent / 2).toFixed(2)}%):</span>
+                  <span className="font-medium">{formatCurrency(totals.sgst)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Total GST:</span>
+                  <span className="font-medium">{formatCurrency(totals.totalGst)}</span>
+                </div>
+              </>
+            )}
+            {formData.transportChargesApplicable && totals.transportCharges > 0 && (
+              <div className="flex justify-between">
+                <span className="text-gray-600">{formData.transportChargesLabel}:</span>
+                <span className="font-medium">{formatCurrency(totals.transportCharges)}</span>
+              </div>
+            )}
+            <div className="border-t pt-2">
+              <div className="flex justify-between text-lg font-bold">
+                <span>Total:</span>
+                <span>{formatCurrency(totals.total)}</span>
+              </div>
+            </div>
           </div>
+        </div>
 
-          {/* Form Actions */}
-          <div className="flex space-x-3 pt-6 border-t">
-            <Link to="/invoices" className="flex-1">
-              <Button type="button" variant="outline" className="w-full">
-                Cancel
-              </Button>
-            </Link>
-            <Button
-              type="submit"
-              loading={submitting}
-              className="flex-1"
-            >
-              {isEditing ? 'Update Invoice' : 'Create Invoice'}
-            </Button>
-          </div>
-        </form>
-      </div>
+        {/* Form Actions */}
+        <div className="flex justify-end space-x-4">
+          <Link to="/invoices">
+            <Button variant="secondary">Cancel</Button>
+          </Link>
+          <Button type="submit" loading={submitting}>
+            {isEditing ? 'Update Invoice' : 'Create Invoice'}
+          </Button>
+        </div>
+      </form>
     </div>
   );
 };

@@ -40,6 +40,43 @@ const SearchIcon = () => (
   </svg>
 );
 
+const CalendarIcon = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+  </svg>
+);
+
+const FilterIcon = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.414A1 1 0 013 6.707V4z" />
+  </svg>
+);
+
+// Date filter options
+const DATE_FILTER_OPTIONS = [
+  { value: '', label: 'All Time' },
+  { value: 'today', label: 'Today' },
+  { value: 'yesterday', label: 'Yesterday' },
+  { value: 'this_week', label: 'This Week' },
+  { value: 'last_week', label: 'Last Week' },
+  { value: 'this_month', label: 'This Month' },
+  { value: 'last_month', label: 'Last Month' },
+  { value: 'this_quarter', label: 'This Quarter' },
+  { value: 'last_quarter', label: 'Last Quarter' },
+  { value: 'this_year', label: 'This Year' },
+  { value: 'last_year', label: 'Last Year' },
+  { value: 'last_30_days', label: 'Last 30 Days' },
+  { value: 'last_90_days', label: 'Last 90 Days' },
+  { value: 'custom', label: 'Custom Range' }
+];
+
+// Helper function to format date for input
+const formatDateForInput = (date) => {
+  if (!date) return '';
+  const d = new Date(date);
+  return d.toISOString().split('T')[0];
+};
+
 const Invoices = () => {
   const [invoices, setInvoices] = useState([]);
   const [filteredInvoices, setFilteredInvoices] = useState([]);
@@ -47,31 +84,45 @@ const Invoices = () => {
   const [error, setError] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [dateFilter, setDateFilter] = useState('');
+  const [customStartDate, setCustomStartDate] = useState('');
+  const [customEndDate, setCustomEndDate] = useState('');
+  const [showCustomDateRange, setShowCustomDateRange] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
 
   // Debounced search function
   const debouncedSearch = debounce((term) => {
-    let filtered = filterBySearch(invoices, term, ['invoiceNumber', 'customer.name', 'customer.email']);
-    
-    if (statusFilter) {
-      filtered = filtered.filter(invoice => invoice.status === statusFilter);
-    }
-    
+    let filtered = filterBySearch(invoices, term, ['invoiceNumber', 'customerName', 'customerEmail']);
     setFilteredInvoices(filtered);
   }, 300);
 
   useEffect(() => {
     fetchInvoices();
-  }, []);
+  }, [statusFilter, dateFilter, customStartDate, customEndDate]);
 
   useEffect(() => {
     debouncedSearch(searchTerm);
-  }, [searchTerm, statusFilter, invoices]);
+  }, [searchTerm, invoices]);
 
   const fetchInvoices = async () => {
     try {
       setLoading(true);
-      const data = await invoiceAPI.getAll();
+      
+      // Build filters object
+      const filters = {};
+      
+      if (statusFilter) {
+        filters.status = statusFilter;
+      }
+      
+      if (dateFilter === 'custom' && customStartDate && customEndDate) {
+        filters.startDate = customStartDate;
+        filters.endDate = customEndDate;
+      } else if (dateFilter && dateFilter !== 'custom') {
+        filters.dateFilter = dateFilter;
+      }
+      
+      const data = await invoiceAPI.getAll(filters);
       setInvoices(data);
       setFilteredInvoices(data);
     } catch (err) {
@@ -95,6 +146,33 @@ const Invoices = () => {
     setStatusFilter(status);
   };
 
+  const handleDateFilterChange = (filter) => {
+    setDateFilter(filter);
+    setShowCustomDateRange(filter === 'custom');
+    
+    if (filter !== 'custom') {
+      setCustomStartDate('');
+      setCustomEndDate('');
+    }
+  };
+
+  const clearFilters = () => {
+    setStatusFilter('');
+    setDateFilter('');
+    setCustomStartDate('');
+    setCustomEndDate('');
+    setShowCustomDateRange(false);
+    setSearchTerm('');
+  };
+
+  const getActiveFiltersCount = () => {
+    let count = 0;
+    if (statusFilter) count++;
+    if (dateFilter) count++;
+    if (searchTerm) count++;
+    return count;
+  };
+
   if (loading) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -111,6 +189,11 @@ const Invoices = () => {
           <h1 className="text-2xl font-bold text-gray-900">Invoices</h1>
           <p className="mt-1 text-sm text-gray-600">
             Manage your billing invoices
+            {getActiveFiltersCount() > 0 && (
+              <span className="ml-2 inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                {getActiveFiltersCount()} filter{getActiveFiltersCount() > 1 ? 's' : ''} active
+              </span>
+            )}
           </p>
         </div>
         <div className="mt-4 sm:mt-0">
@@ -124,50 +207,97 @@ const Invoices = () => {
       </div>
 
       {/* Filters */}
-      <div className="flex flex-col sm:flex-row gap-4">
-        <div className="relative flex-1 max-w-md">
-          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-            <SearchIcon />
-          </div>
-          <Input
-            type="text"
-            placeholder="Search invoices..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-10"
-          />
+      <div className="bg-white rounded-lg shadow p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-medium text-gray-900 flex items-center">
+            <FilterIcon />
+            <span className="ml-2">Filters</span>
+          </h3>
+          {getActiveFiltersCount() > 0 && (
+            <Button variant="outline" size="sm" onClick={clearFilters}>
+              Clear All Filters
+            </Button>
+          )}
         </div>
         
-        <div className="flex gap-2">
-          <Button
-            variant={statusFilter === '' ? 'primary' : 'outline'}
-            size="sm"
-            onClick={() => handleStatusFilterChange('')}
-          >
-            All
-          </Button>
-          <Button
-            variant={statusFilter === 'PAID' ? 'success' : 'outline'}
-            size="sm"
-            onClick={() => handleStatusFilterChange('PAID')}
-          >
-            Paid
-          </Button>
-          <Button
-            variant={statusFilter === 'UNPAID' ? 'warning' : 'outline'}
-            size="sm"
-            onClick={() => handleStatusFilterChange('UNPAID')}
-          >
-            Unpaid
-          </Button>
-          <Button
-            variant={statusFilter === 'OVERDUE' ? 'danger' : 'outline'}
-            size="sm"
-            onClick={() => handleStatusFilterChange('OVERDUE')}
-          >
-            Overdue
-          </Button>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* Search */}
+          <div className="relative">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <SearchIcon />
+            </div>
+            <Input
+              type="text"
+              placeholder="Search invoices..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10"
+            />
+          </div>
+          
+          {/* Status Filter */}
+          <div>
+            <select
+              value={statusFilter}
+              onChange={(e) => handleStatusFilterChange(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+            >
+              <option value="">All Status</option>
+              <option value="PAID">Paid</option>
+              <option value="UNPAID">Unpaid</option>
+              <option value="OVERDUE">Overdue</option>
+            </select>
+          </div>
+          
+          {/* Date Filter */}
+          <div>
+            <select
+              value={dateFilter}
+              onChange={(e) => handleDateFilterChange(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+            >
+              {DATE_FILTER_OPTIONS.map(option => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          
+          {/* Invoice Count */}
+          <div className="flex items-center text-sm text-gray-600">
+            <span className="font-medium">{filteredInvoices.length}</span>
+            <span className="ml-1">invoice{filteredInvoices.length !== 1 ? 's' : ''} found</span>
+          </div>
         </div>
+        
+        {/* Custom Date Range */}
+        {showCustomDateRange && (
+          <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Start Date
+              </label>
+              <Input
+                type="date"
+                value={customStartDate}
+                onChange={(e) => setCustomStartDate(e.target.value)}
+                className="w-full"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                End Date
+              </label>
+              <Input
+                type="date"
+                value={customEndDate}
+                onChange={(e) => setCustomEndDate(e.target.value)}
+                className="w-full"
+              />
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Error Message */}
@@ -198,7 +328,10 @@ const Invoices = () => {
             {filteredInvoices.length === 0 ? (
               <Table.Row>
                 <Table.Cell colSpan="7" className="text-center text-gray-500 py-8">
-                  {searchTerm || statusFilter ? 'No invoices found matching your criteria.' : 'No invoices found. Create your first invoice!'}
+                  {searchTerm || statusFilter || dateFilter ? 
+                    'No invoices found matching your criteria.' : 
+                    'No invoices found. Create your first invoice!'
+                  }
                 </Table.Cell>
               </Table.Row>
             ) : (
@@ -209,8 +342,8 @@ const Invoices = () => {
                   </Table.Cell>
                   <Table.Cell>
                     <div>
-                      <div className="font-medium">{invoice.customer?.name || 'N/A'}</div>
-                      <div className="text-sm text-gray-500">{invoice.customer?.email || ''}</div>
+                      <div className="font-medium">{invoice.customerName || 'N/A'}</div>
+                      <div className="text-sm text-gray-500">{invoice.customerEmail || ''}</div>
                     </div>
                   </Table.Cell>
                   <Table.Cell className="font-medium">

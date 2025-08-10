@@ -1,6 +1,106 @@
 import React, { useState } from 'react';
-import { customerAPI, productAPI, invoiceAPI } from '../services/api';
+import { productAPI, invoiceAPI } from '../services/api';
 import Button from './ui/Button';
+
+const ApiTester = () => {
+  const [results, setResults] = useState({});
+  const [loading, setLoading] = useState({});
+
+  const testApi = async (apiName, operation, ...args) => {
+    const key = `${apiName}_${operation}`;
+    setLoading(prev => ({ ...prev, [key]: true }));
+    
+    try {
+      let result;
+      switch (apiName) {
+        case 'product':
+          result = await productAPI[operation](...args);
+          break;
+        case 'invoice':
+          result = await invoiceAPI[operation](...args);
+          break;
+        default:
+          throw new Error(`Unknown API: ${apiName}`);
+      }
+      
+      setResults(prev => ({ 
+        ...prev, 
+        [key]: { success: true, data: result } 
+      }));
+    } catch (error) {
+      setResults(prev => ({ 
+        ...prev, 
+        [key]: { success: false, error: error.message } 
+      }));
+    } finally {
+      setLoading(prev => ({ ...prev, [key]: false }));
+    }
+  };
+
+  const renderResult = (key) => {
+    const result = results[key];
+    if (!result) return null;
+    
+    return (
+      <div className={`mt-2 p-2 rounded text-sm ${
+        result.success ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+      }`}>
+        {result.success ? (
+          <pre>{JSON.stringify(result.data, null, 2)}</pre>
+        ) : (
+          <span>Error: {result.error}</span>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <div className="space-y-6">
+      <h2 className="text-2xl font-bold text-gray-900">API Tester</h2>
+      
+      {/* Product API Tests */}
+      <div className="bg-white p-6 rounded-lg shadow">
+        <h3 className="text-lg font-semibold mb-4">Product API</h3>
+        <div className="space-y-2">
+          <Button
+            onClick={() => testApi('product', 'getAll')}
+            loading={loading.product_getAll}
+            variant="secondary"
+          >
+            Get All Products
+          </Button>
+          {renderResult('product_getAll')}
+          
+          <Button
+            onClick={() => testApi('product', 'create', { name: 'Test Product' })}
+            loading={loading.product_create}
+            variant="secondary"
+          >
+            Create Test Product
+          </Button>
+          {renderResult('product_create')}
+        </div>
+      </div>
+
+      {/* Invoice API Tests */}
+      <div className="bg-white p-6 rounded-lg shadow">
+        <h3 className="text-lg font-semibold mb-4">Invoice API</h3>
+        <div className="space-y-2">
+          <Button
+            onClick={() => testApi('invoice', 'getAll')}
+            loading={loading.invoice_getAll}
+            variant="secondary"
+          >
+            Get All Invoices
+          </Button>
+          {renderResult('invoice_getAll')}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default ApiTester;
 
 const ApiTester = () => {
   const [results, setResults] = useState({});
