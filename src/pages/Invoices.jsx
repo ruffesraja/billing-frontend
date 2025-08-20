@@ -7,6 +7,7 @@ import Input from '../components/ui/Input';
 import Table from '../components/ui/Table';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
 import Modal from '../components/ui/Modal';
+import DateFilter, { DATE_FILTER_OPTIONS } from '../components/DateFilter';
 
 // Simple icons
 const PlusIcon = () => (
@@ -52,23 +53,7 @@ const FilterIcon = () => (
   </svg>
 );
 
-// Date filter options
-const DATE_FILTER_OPTIONS = [
-  { value: '', label: 'All Time' },
-  { value: 'today', label: 'Today' },
-  { value: 'yesterday', label: 'Yesterday' },
-  { value: 'this_week', label: 'This Week' },
-  { value: 'last_week', label: 'Last Week' },
-  { value: 'this_month', label: 'This Month' },
-  { value: 'last_month', label: 'Last Month' },
-  { value: 'this_quarter', label: 'This Quarter' },
-  { value: 'last_quarter', label: 'Last Quarter' },
-  { value: 'this_year', label: 'This Year' },
-  { value: 'last_year', label: 'Last Year' },
-  { value: 'last_30_days', label: 'Last 30 Days' },
-  { value: 'last_90_days', label: 'Last 90 Days' },
-  { value: 'custom', label: 'Custom Range' }
-];
+
 
 // Helper function to format date for input
 const formatDateForInput = (date) => {
@@ -84,7 +69,7 @@ const Invoices = () => {
   const [error, setError] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
-  const [dateFilter, setDateFilter] = useState('');
+  const [dateFilter, setDateFilter] = useState('this_week');
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
   const [showCustomDateRange, setShowCustomDateRange] = useState(false);
@@ -158,7 +143,7 @@ const Invoices = () => {
 
   const clearFilters = () => {
     setStatusFilter('');
-    setDateFilter('');
+    setDateFilter('this_week');
     setCustomStartDate('');
     setCustomEndDate('');
     setShowCustomDateRange(false);
@@ -168,7 +153,7 @@ const Invoices = () => {
   const getActiveFiltersCount = () => {
     let count = 0;
     if (statusFilter) count++;
-    if (dateFilter) count++;
+    if (dateFilter && dateFilter !== 'this_week') count++; // Don't count default filter
     if (searchTerm) count++;
     return count;
   };
@@ -215,7 +200,7 @@ const Invoices = () => {
           </h3>
           {getActiveFiltersCount() > 0 && (
             <Button variant="outline" size="sm" onClick={clearFilters}>
-              Clear All Filters
+              Reset Filters
             </Button>
           )}
         </div>
@@ -251,17 +236,17 @@ const Invoices = () => {
           
           {/* Date Filter */}
           <div>
-            <select
-              value={dateFilter}
-              onChange={(e) => handleDateFilterChange(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-            >
-              {DATE_FILTER_OPTIONS.map(option => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
+            <DateFilter
+              dateFilter={dateFilter}
+              customStartDate={customStartDate}
+              customEndDate={customEndDate}
+              showCustomDateRange={false}
+              onDateFilterChange={handleDateFilterChange}
+              onCustomStartDateChange={setCustomStartDate}
+              onCustomEndDateChange={setCustomEndDate}
+              showIcon={false}
+              placeholder="All Dates"
+            />
           </div>
           
           {/* Invoice Count */}
@@ -273,29 +258,18 @@ const Invoices = () => {
         
         {/* Custom Date Range */}
         {showCustomDateRange && (
-          <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Start Date
-              </label>
-              <Input
-                type="date"
-                value={customStartDate}
-                onChange={(e) => setCustomStartDate(e.target.value)}
-                className="w-full"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                End Date
-              </label>
-              <Input
-                type="date"
-                value={customEndDate}
-                onChange={(e) => setCustomEndDate(e.target.value)}
-                className="w-full"
-              />
-            </div>
+          <div className="mt-4">
+            <DateFilter
+              dateFilter={dateFilter}
+              customStartDate={customStartDate}
+              customEndDate={customEndDate}
+              showCustomDateRange={showCustomDateRange}
+              onDateFilterChange={handleDateFilterChange}
+              onCustomStartDateChange={setCustomStartDate}
+              onCustomEndDateChange={setCustomEndDate}
+              showIcon={false}
+              className="date-range-only"
+            />
           </div>
         )}
       </div>

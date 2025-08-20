@@ -5,6 +5,7 @@ import { formatCurrency, getStatusColor } from '../utils/helpers';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
 import Button from '../components/ui/Button';
 import TroubleshootingPanel from '../components/TroubleshootingPanel';
+import DateFilter from '../components/DateFilter';
 import { 
   PackageIcon, 
   FileTextIcon, 
@@ -12,7 +13,8 @@ import {
   RefreshIcon, 
   TrendingUpIcon,
   AddIcon,
-  ViewIcon
+  ViewIcon,
+  FilterIcon
 } from '../components/ui/Icons';
 
 const StatCard = ({ title, value, icon: Icon, color, link, loading = false, trend, trendValue }) => {
@@ -59,6 +61,13 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [connectionStatus, setConnectionStatus] = useState(null);
+  
+  // Date filter states
+  const [dateFilter, setDateFilter] = useState('this_week');
+  const [customStartDate, setCustomStartDate] = useState('');
+  const [customEndDate, setCustomEndDate] = useState('');
+  const [showCustomDateRange, setShowCustomDateRange] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
 
   const fetchDashboardData = async () => {
     try {
@@ -73,9 +82,19 @@ const Dashboard = () => {
         throw new Error(connectionResult.message);
       }
 
+      // Build filters object for invoices
+      const filters = {};
+      
+      if (dateFilter === 'custom' && customStartDate && customEndDate) {
+        filters.startDate = customStartDate;
+        filters.endDate = customEndDate;
+      } else if (dateFilter && dateFilter !== 'custom') {
+        filters.dateFilter = dateFilter;
+      }
+
       // Fetch data in parallel
       const [invoicesResponse, productsResponse] = await Promise.all([
-        invoiceAPI.getAll(),
+        invoiceAPI.getAll(filters),
         productAPI.getAll()
       ]);
 
@@ -108,7 +127,34 @@ const Dashboard = () => {
 
   useEffect(() => {
     fetchDashboardData();
-  }, []);
+  }, [dateFilter, customStartDate, customEndDate]);
+
+  // Handle date filter changes
+  const handleDateFilterChange = (filter) => {
+    setDateFilter(filter);
+    setShowCustomDateRange(filter === 'custom');
+    
+    if (filter !== 'custom') {
+      setCustomStartDate('');
+      setCustomEndDate('');
+    }
+  };
+
+  const clearFilters = () => {
+    setDateFilter('this_week');
+    setCustomStartDate('');
+    setCustomEndDate('');
+    setShowCustomDateRange(false);
+  };
+
+  const getFilterLabel = () => {
+    if (!dateFilter || dateFilter === '') return 'All Time';
+    if (dateFilter === 'custom' && customStartDate && customEndDate) {
+      return `${customStartDate} to ${customEndDate}`;
+    }
+    const option = dateFilter;
+    return option.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+  };
 
   if (error && !connectionStatus?.success) {
     return (
@@ -128,12 +174,28 @@ const Dashboard = () => {
   return (
     <div className="space-y-8">
       {/* Header */}
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-4 sm:space-y-0">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Billing Dashboard</h1>
-          <p className="text-gray-600 mt-1">Overview of your billing operations</p>
+          <p className="text-gray-600 mt-1">
+            Overview of your billing operations
+            {dateFilter && (
+              <span className="ml-2 inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                Filtered: {getFilterLabel()}
+              </span>
+            )}
+          </p>
         </div>
-        <div className="flex space-x-3">
+        <div className="flex flex-wrap gap-3">
+          <Button 
+            onClick={() => setShowFilters(!showFilters)} 
+            variant="secondary"
+            className={dateFilter && dateFilter !== 'this_week' ? 'bg-blue-50 border-blue-200 text-blue-700' : ''}
+          >
+            <FilterIcon className="w-4 h-4 mr-2" />
+            Filters
+            {dateFilter && dateFilter !== 'this_week' && <span className="ml-1 text-xs bg-blue-200 text-blue-800 rounded-full px-1">1</span>}
+          </Button>
           <Button onClick={fetchDashboardData} variant="secondary">
             <RefreshIcon className="w-4 h-4 mr-2" />
             Refresh
@@ -146,6 +208,45 @@ const Dashboard = () => {
           </Link>
         </div>
       </div>
+
+      {/* Date Filters */}
+      {showFilters && (
+        <div className="bg-white rounded-lg shadow-lg p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-medium text-gray-900 flex items-center">
+              <FilterIcon className="w-5 h-5 mr-2" />
+              Date Filters
+            </h3>
+            {dateFilter && dateFilter !== 'this_week' && (
+              <Button variant="outline" size="sm" onClick={clearFilters}>
+                Reset to This Week
+              </Button>
+            )}
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="lg:col-span-2">
+              <DateFilter
+                dateFilter={dateFilter}
+                customStartDate={customStartDate}
+                customEndDate={customEndDate}
+                showCustomDateRange={showCustomDateRange}
+                onDateFilterChange={handleDateFilterChange}
+                onCustomStartDateChange={setCustomStartDate}
+                onCustomEndDateChange={setCustomEndDate}
+                placeholder="Select date range"
+              />
+            </div>
+            
+            <div className="flex items-end">
+              <div className="text-sm text-gray-600">
+                <p className="font-medium">Data Period: {getFilterLabel()}</p>
+                <p className="text-xs mt-1">Statistics reflect the selected date range</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Connection Status */}
       {connectionStatus && (

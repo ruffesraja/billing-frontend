@@ -40,6 +40,11 @@ const BusinessSettings = () => {
     invoiceHeaderText: '',
     invoiceFooterText: '',
     businessLogoPath: '',
+    
+    // Header Configuration
+    headerGodSymbol: '',
+    headerName: '',
+    
     defaultCgstRate: 9.0,
     defaultSgstRate: 9.0,
     invoicePrefix: 'INV',
@@ -88,6 +93,8 @@ const BusinessSettings = () => {
           invoiceHeaderText: activeOwner.invoiceHeaderText || '',
           invoiceFooterText: activeOwner.invoiceFooterText || '',
           businessLogoPath: activeOwner.businessLogoPath || '',
+          headerGodSymbol: activeOwner.headerGodSymbol || '',
+          headerName: activeOwner.headerName || '',
           defaultCgstRate: activeOwner.defaultCgstRate || 9.0,
           defaultSgstRate: activeOwner.defaultSgstRate || 9.0,
           invoicePrefix: activeOwner.invoicePrefix || 'INV',
@@ -398,6 +405,23 @@ const BusinessSettings = () => {
           </div>
           
           <div className="mt-4 space-y-4">
+            {/* Header Configuration */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Input
+                label="Header God Symbol"
+                value={formData.headerGodSymbol}
+                onChange={(e) => handleInputChange('headerGodSymbol', e.target.value)}
+                placeholder="e.g., ॐ (converts to OM), *, +, O"
+                helpText="Symbols like ॐ, ஓம், 🕉️ will be converted to 'OM' in PDF for better compatibility"
+              />
+              <Input
+                label="Header Name"
+                value={formData.headerName}
+                onChange={(e) => handleInputChange('headerName', e.target.value)}
+                placeholder="e.g., Sri Periyandavar Thunal"
+              />
+            </div>
+            
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Invoice Header Text

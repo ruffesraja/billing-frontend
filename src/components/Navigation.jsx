@@ -47,19 +47,7 @@ const PlusIcon = () => (
 
 const Navigation = () => {
   const [isOpen, setIsOpen] = useState(false);
-  const [scrolled, setScrolled] = useState(false);
   const location = useLocation();
-
-  // Handle scroll effect
-  useEffect(() => {
-    const handleScroll = () => {
-      const isScrolled = window.scrollY > 10;
-      setScrolled(isScrolled);
-    };
-
-    window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
 
   // Close mobile menu when route changes
   useEffect(() => {
@@ -82,26 +70,16 @@ const Navigation = () => {
 
   return (
     <>
-      <nav className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
-        scrolled 
-          ? 'bg-gray-900 bg-opacity-95 backdrop-blur-md shadow-xl' 
-          : 'bg-gray-900 shadow-lg'
-      }`}>
+      <nav className="fixed top-0 left-0 right-0 z-50 bg-gray-900 shadow-lg">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
             {/* Logo and brand */}
             <div className="flex items-center">
-              <Link to="/" className="flex items-center space-x-3 group">
-                <div className="relative">
-                  <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center shadow-lg group-hover:shadow-xl transition-all duration-300 group-hover:scale-105">
-                    <span className="text-white font-bold text-lg">B</span>
-                  </div>
-                  <div className="absolute -inset-1 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl blur opacity-25 group-hover:opacity-40 transition-opacity duration-300"></div>
+              <Link to="/" className="flex items-center space-x-3">
+                <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center shadow-lg">
+                  <span className="text-white font-bold text-lg">B</span>
                 </div>
-                <div className="relative">
-                  <span className="text-white font-bold text-xl tracking-tight">BillPro</span>
-                  <div className="absolute -bottom-1 left-0 w-0 h-0.5 bg-gradient-to-r from-blue-400 to-blue-600 group-hover:w-full transition-all duration-300"></div>
-                </div>
+                <span className="text-white font-bold text-xl tracking-tight">BillPro</span>
               </Link>
             </div>
 
@@ -114,7 +92,7 @@ const Navigation = () => {
                   <Link
                     key={item.path}
                     to={item.path}
-                    className={`relative px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center space-x-2 group ${
+                    className={`px-4 py-2 rounded-lg text-sm font-medium flex items-center space-x-2 ${
                       active
                         ? 'text-white bg-blue-600 shadow-lg'
                         : 'text-gray-300 hover:text-white hover:bg-gray-700'
@@ -122,9 +100,6 @@ const Navigation = () => {
                   >
                     <Icon />
                     <span>{item.label}</span>
-                    {active && (
-                      <div className="absolute inset-0 bg-blue-600 rounded-lg shadow-lg animate-pulse opacity-20"></div>
-                    )}
                   </Link>
                 );
               })}
@@ -134,11 +109,10 @@ const Navigation = () => {
             <div className="hidden md:flex md:items-center md:space-x-4">
               <Link
                 to="/invoices/create"
-                className="relative inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-green-500 to-green-600 rounded-lg hover:from-green-600 hover:to-green-700 transition-all duration-200 shadow-lg hover:shadow-xl group"
+                className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-green-500 to-green-600 rounded-lg hover:from-green-600 hover:to-green-700 shadow-lg"
               >
                 <PlusIcon />
                 <span className="ml-2">New Invoice</span>
-                <div className="absolute inset-0 bg-white rounded-lg opacity-0 group-hover:opacity-10 transition-opacity duration-200"></div>
               </Link>
             </div>
 
@@ -146,7 +120,7 @@ const Navigation = () => {
             <div className="md:hidden flex items-center">
               <button
                 onClick={() => setIsOpen(!isOpen)}
-                className="p-2 rounded-lg text-gray-300 hover:text-white hover:bg-gray-700 transition-colors duration-200"
+                className="p-2 rounded-lg text-gray-300 hover:text-white hover:bg-gray-700"
                 aria-label="Toggle menu"
               >
                 {isOpen ? <XIcon /> : <MenuIcon />}
@@ -156,10 +130,10 @@ const Navigation = () => {
         </div>
 
         {/* Mobile menu */}
-        <div className={`md:hidden transition-all duration-300 ease-in-out ${
+        <div className={`md:hidden ${
           isOpen 
-            ? 'max-h-96 opacity-100' 
-            : 'max-h-0 opacity-0 overflow-hidden'
+            ? 'block' 
+            : 'hidden'
         }`}>
           <div className="px-4 pt-2 pb-4 space-y-2 bg-gray-800 border-t border-gray-700">
             {navItems.map((item) => {
@@ -169,7 +143,7 @@ const Navigation = () => {
                 <Link
                   key={item.path}
                   to={item.path}
-                  className={`flex items-center space-x-3 px-4 py-3 rounded-lg text-base font-medium transition-all duration-200 ${
+                  className={`flex items-center space-x-3 px-4 py-3 rounded-lg text-base font-medium ${
                     active
                       ? 'text-white bg-blue-600 shadow-lg'
                       : 'text-gray-300 hover:text-white hover:bg-gray-700'
@@ -185,7 +159,7 @@ const Navigation = () => {
             {/* Mobile Quick Action */}
             <Link
               to="/invoices/create"
-              className="flex items-center space-x-3 px-4 py-3 mt-4 text-base font-medium text-white bg-gradient-to-r from-green-500 to-green-600 rounded-lg hover:from-green-600 hover:to-green-700 transition-all duration-200 shadow-lg"
+              className="flex items-center space-x-3 px-4 py-3 mt-4 text-base font-medium text-white bg-gradient-to-r from-green-500 to-green-600 rounded-lg hover:from-green-600 hover:to-green-700 shadow-lg"
               onClick={() => setIsOpen(false)}
             >
               <PlusIcon />
