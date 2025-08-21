@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { invoiceAPI, productAPI } from '../services/api';
+import { invoiceAPI, productAPI, ownerAPI } from '../services/api';
 import { formatDateForInput, formatCurrency } from '../utils/helpers';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
@@ -47,12 +47,12 @@ const InvoiceForm = () => {
     
     // GST settings
     gstApplicable: false,
-    gstPercent: 18, // Default GST rate
+    gstPercent: 0, // Will be loaded from business settings
     
     // Additional charges
     transportChargesApplicable: false,
     transportChargesLabel: 'Transport Charges',
-    transportCharges: 0,
+    transportCharges: null,
     
     // Line items with dynamic pricing (no per-item tax)
     items: [{
@@ -60,30 +60,66 @@ const InvoiceForm = () => {
       productName: '',
       productDescription: '',
       quantity: 1,
-      unitPrice: 0,
+      unitPrice: 1,
       isCustomProduct: false
     }]
   });
 
   const [products, setProducts] = useState([]);
+  const [businessSettings, setBusinessSettings] = useState(null);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState({});
+  const [touched, setTouched] = useState({}); // Track which fields have been touched
 
-  // Load products and invoice data (if editing)
+  // Load products, business settings, and invoice data (if editing)
   useEffect(() => {
     const loadData = async () => {
       try {
         setLoading(true);
         
+        // Refresh current date for new invoices (not editing)
+        if (!isEditing) {
+          const now = new Date();
+          console.log('Current date:', now);
+          console.log('Formatted invoice date:', formatDateForInput(now));
+          console.log('Formatted due date:', formatDateForInput(new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)));
+          setFormData(prev => ({
+            ...prev,
+            invoiceDate: formatDateForInput(now),
+            dueDate: formatDateForInput(new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000))
+          }));
+        }
+        
         // Load products
         const productsData = await productAPI.getAll();
         setProducts(productsData);
 
+        // Load business settings for default GST values
+        try {
+          const owners = await ownerAPI.getAll();
+          if (owners && owners.length > 0) {
+            const activeOwner = owners.find(owner => owner.isActive) || owners[0];
+            setBusinessSettings(activeOwner);
+            
+            // Set default GST percentage from business settings
+            if (activeOwner.defaultCgstRate && activeOwner.defaultSgstRate) {
+              const defaultGstPercent = activeOwner.defaultCgstRate + activeOwner.defaultSgstRate;
+              setFormData(prev => ({
+                ...prev,
+                gstPercent: defaultGstPercent
+              }));
+            }
+          }
+        } catch (error) {
+          console.warn('Could not load business settings:', error);
+        }
+
         // Load invoice data if editing
         if (isEditing) {
           const invoiceData = await invoiceAPI.getById(id);
-          setFormData({
+          setFormData(prev => ({
+            ...prev,
             customerName: invoiceData.customerName || '',
             customerEmail: invoiceData.customerEmail || '',
             customerPhone: invoiceData.customerPhone || '',
@@ -95,10 +131,10 @@ const InvoiceForm = () => {
             notes: invoiceData.notes || '',
             gstApplicable: invoiceData.gstApplicable || false,
             gstPercent: invoiceData.gstApplicable && invoiceData.cgstRate ? 
-                        (invoiceData.cgstRate * 2) : 18,
+                        (invoiceData.cgstRate * 2) : (businessSettings?.defaultCgstRate + businessSettings?.defaultSgstRate) || 18,
             transportChargesApplicable: !!(invoiceData.transportCharges && invoiceData.transportCharges > 0),
             transportChargesLabel: invoiceData.transportChargesLabel || 'Transport Charges',
-            transportCharges: invoiceData.transportCharges || 0,
+            transportCharges: invoiceData.transportCharges,
             items: invoiceData.lineItems?.map(item => ({
               productId: item.productId,
               productName: item.productName,
@@ -111,10 +147,10 @@ const InvoiceForm = () => {
               productName: '',
               productDescription: '',
               quantity: 1,
-              unitPrice: 0,
+              unitPrice: 1,
               isCustomProduct: false
             }]
-          });
+          }));
         }
       } catch (error) {
         console.error('Error loading data:', error);
@@ -127,6 +163,25 @@ const InvoiceForm = () => {
     loadData();
   }, [id, isEditing]);
 
+  // Run initial validation after form data is loaded
+  useEffect(() => {
+    if (!loading && formData.items.length > 0) {
+      // Validate all fields initially
+      validateField('customerName', formData.customerName);
+      validateField('customerPhone', formData.customerPhone);
+      validateField('invoiceDate', formData.invoiceDate);
+      validateField('dueDate', formData.dueDate);
+      
+      // Validate all item fields initially
+      formData.items.forEach((item, index) => {
+        validateItemField(index, 'productName', item.productName);
+        validateItemField(index, 'productId', item.productId);
+        validateItemField(index, 'quantity', item.quantity);
+        validateItemField(index, 'unitPrice', item.unitPrice);
+      });
+    }
+  }, [loading, formData.items.length]);
+
   // Handle form field changes
   const handleInputChange = (field, value) => {
     setFormData(prev => ({
@@ -134,13 +189,14 @@ const InvoiceForm = () => {
       [field]: value
     }));
     
-    // Clear field error when user starts typing
-    if (errors[field]) {
-      setErrors(prev => ({
-        ...prev,
-        [field]: null
-      }));
-    }
+    // Mark field as touched
+    setTouched(prev => ({
+      ...prev,
+      [field]: true
+    }));
+    
+    // Validate field immediately after change
+    validateField(field, value);
   };
 
   // Handle line item changes
@@ -151,6 +207,16 @@ const InvoiceForm = () => {
         i === index ? { ...item, [field]: value } : item
       )
     }));
+    
+    // Mark item field as touched
+    const touchKey = `item_${index}_${field}`;
+    setTouched(prev => ({
+      ...prev,
+      [touchKey]: true
+    }));
+    
+    // Validate item field immediately after change
+    validateItemField(index, field, value);
   };
 
   // Handle product selection
@@ -162,6 +228,18 @@ const InvoiceForm = () => {
     }
   };
 
+  // Get available products for a specific item (excluding already selected ones)
+  const getAvailableProducts = (currentIndex) => {
+    return products.filter(product => {
+      // Check if this product is already selected in another item
+      return !formData.items.some((item, index) => 
+        index !== currentIndex && 
+        item.productId === product.id.toString() && 
+        !item.isCustomProduct
+      );
+    });
+  };
+
   // Add new line item
   const addLineItem = () => {
     setFormData(prev => ({
@@ -171,7 +249,7 @@ const InvoiceForm = () => {
         productName: '',
         productDescription: '',
         quantity: 1,
-        unitPrice: 0,
+        unitPrice: 1,
         isCustomProduct: false
       }]
     }));
@@ -215,11 +293,97 @@ const InvoiceForm = () => {
     
     // Add transport charges if applicable
     const transportCharges = formData.transportChargesApplicable ? 
-      (parseFloat(formData.transportCharges) || 0) : 0;
+      parseFloat(formData.transportCharges) : 0;
     
     const total = subtotal + totalGst + transportCharges;
     
     return { subtotal, cgst, sgst, totalGst, transportCharges, total };
+  };
+
+  // Validate a single field
+  const validateField = (field, value) => {
+    let error = null;
+    
+    switch (field) {
+      case 'customerName':
+        if (!value.trim()) {
+          error = 'Customer name is required';
+        }
+        break;
+      case 'customerEmail':
+        if (value && !/\S+@\S+\.\S+/.test(value)) {
+          error = 'Please enter a valid email address';
+        }
+        break;
+      case 'customerPhone':
+        if (!value.trim()) {
+          error = 'Customer phone is required';
+        }
+        break;
+      case 'invoiceDate':
+        if (!value) {
+          error = 'Invoice date is required';
+        }
+        break;
+      case 'dueDate':
+        if (!value) {
+          error = 'Due date is required';
+        }
+        break;
+      case 'gstPercent':
+        if (formData.gstApplicable && (!value || value < 0)) {
+          error = 'GST percent must be greater than or equal to 0';
+        }
+        break;
+    }
+    
+    setErrors(prev => ({
+      ...prev,
+      [field]: error
+    }));
+  };
+
+  // Validate a single item field
+  const validateItemField = (index, field, value) => {
+    let error = null;
+    
+    switch (field) {
+      case 'productName':
+        if (formData.items[index].isCustomProduct && !value.trim()) {
+          error = 'Product name is required';
+        }
+        break;
+      case 'productId':
+        // Only validate productId if it's NOT a custom product
+        if (!formData.items[index].isCustomProduct && !value) {
+          error = 'Please select a product or mark as custom';
+        }
+        break;
+      case 'quantity':
+        if (!value || value <= 0) {
+          error = 'Quantity must be greater than 0';
+        }
+        break;
+      case 'unitPrice':
+        if (!value || value <= 0) {
+          error = 'Unit price must be greater than 0';
+        }
+        break;
+    }
+    
+    if (error) {
+      setErrors(prev => ({
+        ...prev,
+        [`item_${index}_${field === 'productName' ? 'name' : field === 'productId' ? 'product' : field === 'unitPrice' ? 'price' : field}`]: error
+      }));
+    } else {
+      // Clear error if validation passes
+      const errorKey = `item_${index}_${field === 'productName' ? 'name' : field === 'productId' ? 'product' : field === 'unitPrice' ? 'price' : field}`;
+      setErrors(prev => ({
+        ...prev,
+        [errorKey]: null
+      }));
+    }
   };
 
   // Validate form
@@ -252,12 +416,18 @@ const InvoiceForm = () => {
 
     // Line items validation
     formData.items.forEach((item, index) => {
-      if (!item.isCustomProduct && !item.productId) {
-        newErrors[`item_${index}_product`] = 'Please select a product or mark as custom';
+      if (item.isCustomProduct) {
+        // For custom products, only validate productName
+        if (!item.productName.trim()) {
+          newErrors[`item_${index}_name`] = 'Product name is required';
+        }
+      } else {
+        // For regular products, validate productId
+        if (!item.productId) {
+          newErrors[`item_${index}_product`] = 'Please select a product or mark as custom';
+        }
       }
-      if (!item.productName.trim()) {
-        newErrors[`item_${index}_name`] = 'Product name is required';
-      }
+      
       if (item.quantity <= 0) {
         newErrors[`item_${index}_quantity`] = 'Quantity must be greater than 0';
       }
@@ -295,7 +465,7 @@ const InvoiceForm = () => {
         cgstRate: formData.gstApplicable ? parseFloat(formData.gstPercent) / 2 : null,
         sgstRate: formData.gstApplicable ? parseFloat(formData.gstPercent) / 2 : null,
         transportChargesLabel: formData.transportChargesApplicable ? formData.transportChargesLabel : null,
-        transportCharges: formData.transportChargesApplicable ? parseFloat(formData.transportCharges) || 0 : null,
+        transportCharges: formData.transportChargesApplicable ? parseFloat(formData.transportCharges) : null,
         items: formData.items.map(item => ({
           productId: item.isCustomProduct ? null : (item.productId ? parseInt(item.productId) : null),
           productName: item.productName,
@@ -351,6 +521,22 @@ const InvoiceForm = () => {
             </p>
           </div>
         </div>
+        {!isEditing && (
+          <Button 
+            variant="secondary" 
+            onClick={() => {
+              const now = new Date();
+              setFormData(prev => ({
+                ...prev,
+                invoiceDate: formatDateForInput(now),
+                dueDate: formatDateForInput(new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000))
+              }));
+            }}
+            className="ml-auto"
+          >
+            Refresh Date
+          </Button>
+        )}
       </div>
 
       {/* Error Display */}
@@ -369,7 +555,7 @@ const InvoiceForm = () => {
               label="Customer Name *"
               value={formData.customerName}
               onChange={(e) => handleInputChange('customerName', e.target.value)}
-              error={errors.customerName}
+                                      error={errors.customerName}
               placeholder="Enter customer name"
             />
             <Input
@@ -377,7 +563,7 @@ const InvoiceForm = () => {
               type="email"
               value={formData.customerEmail}
               onChange={(e) => handleInputChange('customerEmail', e.target.value)}
-              error={errors.customerEmail}
+                                      error={errors.customerEmail}
               placeholder="customer@example.com (optional)"
             />
             <Input
@@ -474,6 +660,7 @@ const InvoiceForm = () => {
                 max="100"
                 value={formData.gstPercent}
                 onChange={(e) => handleInputChange('gstPercent', e.target.value)}
+                onWheel={(e) => e.target.blur()}
                 error={errors.gstPercent}
                 placeholder="18.00"
               />
@@ -520,6 +707,7 @@ const InvoiceForm = () => {
                   min="0"
                   value={formData.transportCharges}
                   onChange={(e) => handleInputChange('transportCharges', e.target.value)}
+                  onWheel={(e) => e.target.blur()}
                   placeholder="0.00"
                 />
               </>
@@ -529,21 +717,22 @@ const InvoiceForm = () => {
 
         {/* Line Items Section */}
         <div className="bg-white rounded-lg shadow p-6">
-          <div className="flex justify-between items-center mb-4">
+          <div className="mb-4">
             <h2 className="text-xl font-semibold text-gray-900">Line Items</h2>
-            <Button type="button" onClick={addLineItem} variant="secondary">
-              <PlusIcon />
-              <span className="ml-2">Add Item</span>
-            </Button>
           </div>
 
           <div className="space-y-4">
             {formData.items.map((item, index) => (
-              <div key={index} className="border border-gray-200 rounded-lg p-4">
+              <div key={index} className="border border-gray-200 rounded-lg p-4 relative">
+                {/* Item Number */}
+                <div className="absolute -left-2 -top-2 w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center text-sm font-bold z-10">
+                  {index + 1}
+                </div>
+                
                 <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
                   {/* Custom Product Checkbox */}
                   <div className="md:col-span-2">
-                    <div className="flex items-center space-x-3 mb-2">
+                    <div className="flex items-center space-x-3 mb-2 ml-8">
                       <input
                         type="checkbox"
                         id={`customProduct_${index}`}
@@ -552,6 +741,17 @@ const InvoiceForm = () => {
                           handleItemChange(index, 'isCustomProduct', e.target.checked);
                           if (e.target.checked) {
                             handleItemChange(index, 'productId', '');
+                            // Clear productId error when switching to custom
+                            setErrors(prev => ({
+                              ...prev,
+                              [`item_${index}_product`]: null
+                            }));
+                          } else {
+                            // Clear productName error when switching away from custom
+                            setErrors(prev => ({
+                              ...prev,
+                              [`item_${index}_name`]: null
+                            }));
                           }
                         }}
                         className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
@@ -572,7 +772,7 @@ const InvoiceForm = () => {
                           className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                         >
                           <option value="">Select a product</option>
-                          {products.map(product => (
+                          {getAvailableProducts(index).map(product => (
                             <option key={product.id} value={product.id}>
                               {product.name}
                             </option>
@@ -600,7 +800,8 @@ const InvoiceForm = () => {
                       type="number"
                       min="1"
                       value={item.quantity}
-                      onChange={(e) => handleItemChange(index, 'quantity', e.target.value)}
+                                            onChange={(e) => handleItemChange(index, 'quantity', e.target.value)}
+                      onWheel={(e) => e.target.blur()}
                       error={errors[`item_${index}_quantity`]}
                     />
                   </div>
@@ -613,7 +814,8 @@ const InvoiceForm = () => {
                       step="0.01"
                       min="0"
                       value={item.unitPrice}
-                      onChange={(e) => handleItemChange(index, 'unitPrice', e.target.value)}
+                                            onChange={(e) => handleItemChange(index, 'unitPrice', e.target.value)}
+                      onWheel={(e) => e.target.blur()}
                       error={errors[`item_${index}_price`]}
                     />
                   </div>
@@ -655,8 +857,19 @@ const InvoiceForm = () => {
                     placeholder="Product description (optional)"
                   />
                 </div>
+                
+                {/* Add horizontal line below each item */}
+                <hr className="my-6 border-gray-300" />
               </div>
             ))}
+            
+            {/* Add Item Button - positioned below the last item */}
+            <div className="mt-6 flex justify-center">
+              <Button type="button" onClick={addLineItem} variant="primary" className="px-6 py-3">
+                <PlusIcon />
+                <span className="ml-2">Add Item</span>
+              </Button>
+            </div>
           </div>
         </div>
 

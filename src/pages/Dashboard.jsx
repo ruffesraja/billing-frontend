@@ -22,11 +22,11 @@ const StatCard = ({ title, value, icon: Icon, color, link, loading = false, tren
     <div className={`bg-white rounded-xl shadow-lg p-6 border-l-4 ${color} hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1`}>
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-sm font-medium text-gray-600 mb-1">{title}</p>
+          <p className="text-sm font-medium text-gray-700 mb-1">{title}</p>
           {loading ? (
             <div className="flex items-center space-x-2">
               <LoadingSpinner size="sm" />
-              <span className="text-gray-400">Loading...</span>
+              <span className="text-gray-600">Loading...</span>
             </div>
           ) : (
             <div className="flex items-center space-x-2">
@@ -249,7 +249,7 @@ const Dashboard = () => {
       )}
 
       {/* Connection Status */}
-      {connectionStatus && (
+      {/* {connectionStatus && (
         <div className={`p-4 rounded-lg ${
           connectionStatus.success 
             ? 'bg-green-50 border border-green-200' 
@@ -261,7 +261,7 @@ const Dashboard = () => {
             {connectionStatus.success ? '✅ Backend Connected' : '❌ Backend Connection Failed'}: {connectionStatus.message}
           </p>
         </div>
-      )}
+      )} */}
 
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -272,8 +272,6 @@ const Dashboard = () => {
           color="border-l-blue-500"
           link="/invoices"
           loading={loading}
-          trend="up"
-          trendValue="+12%"
         />
         <StatCard
           title="Total Revenue"
@@ -281,8 +279,6 @@ const Dashboard = () => {
           icon={DollarSignIcon}
           color="border-l-green-500"
           loading={loading}
-          trend="up"
-          trendValue="+8%"
         />
         <StatCard
           title="Pending Invoices"
@@ -323,7 +319,7 @@ const Dashboard = () => {
           ) : recentInvoices.length === 0 ? (
             <div className="text-center py-8">
               <FileTextIcon className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-              <p className="text-gray-500 mb-4">No invoices found</p>
+              <p className="text-gray-700 mb-4">No invoices found</p>
               <Link to="/invoices/create">
                 <Button>
                   <AddIcon className="w-4 h-4 mr-2" />
@@ -351,10 +347,10 @@ const Dashboard = () => {
                         <span className="font-medium text-blue-600">{invoice.invoiceNumber}</span>
                       </td>
                       <td className="py-3 px-4">
-                        <div>
-                          <p className="font-medium text-gray-900">{invoice.customerName}</p>
-                          <p className="text-sm text-gray-500">{invoice.customerEmail}</p>
-                        </div>
+                                <div>
+          <p className="font-medium text-gray-900">{invoice.customerName}</p>
+          <p className="text-sm text-gray-700">{invoice.customerEmail}</p>
+        </div>
                       </td>
                       <td className="py-3 px-4">
                         <span className="font-semibold text-gray-900">
@@ -366,7 +362,7 @@ const Dashboard = () => {
                           {invoice.status}
                         </span>
                       </td>
-                      <td className="py-3 px-4 text-gray-600">
+                      <td className="py-3 px-4 text-gray-700">
                         {new Date(invoice.invoiceDate).toLocaleDateString()}
                       </td>
                       <td className="py-3 px-4">
@@ -387,9 +383,9 @@ const Dashboard = () => {
 
       {/* Quick Actions */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-xl shadow-lg p-6 text-white">
-          <h3 className="text-xl font-semibold mb-2">Create New Invoice</h3>
-          <p className="text-blue-100 mb-4">Start billing your customers with our streamlined invoice creation process.</p>
+                  <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-xl shadow-lg p-6 text-white">
+            <h3 className="text-black font-semibold mb-2">Create New Invoice</h3>
+            <p className="text-black mb-4">Start billing your customers with our streamlined invoice creation process.</p>
           <Link to="/invoices/create">
             <Button variant="secondary" className="bg-white text-blue-600 hover:bg-gray-100">
               <AddIcon className="w-4 h-4 mr-2" />
@@ -398,9 +394,9 @@ const Dashboard = () => {
           </Link>
         </div>
         
-        <div className="bg-gradient-to-r from-purple-500 to-purple-600 rounded-xl shadow-lg p-6 text-white">
-          <h3 className="text-xl font-semibold mb-2">Manage Products</h3>
-          <p className="text-purple-100 mb-4">Add and organize your products for quick invoice creation.</p>
+                  <div className="bg-gradient-to-r from-purple-500 to-purple-600 rounded-xl shadow-lg p-6 text-white">
+            <h3 className="text-black font-semibold mb-2">Manage Products</h3>
+            <p className="text-black mb-4">Add and organize your products for quick invoice creation.</p>
           <Link to="/products">
             <Button variant="secondary" className="bg-white text-purple-600 hover:bg-gray-100">
               <PackageIcon className="w-4 h-4 mr-2" />

@@ -47,10 +47,7 @@ const BusinessSettings = () => {
     
     defaultCgstRate: 9.0,
     defaultSgstRate: 9.0,
-    invoicePrefix: 'INV',
-    nextInvoiceNumber: 1,
-    termsAndConditions: '',
-    paymentTerms: ''
+    termsAndConditions: ''
   });
 
   const [loading, setLoading] = useState(true);
@@ -97,10 +94,7 @@ const BusinessSettings = () => {
           headerName: activeOwner.headerName || '',
           defaultCgstRate: activeOwner.defaultCgstRate || 9.0,
           defaultSgstRate: activeOwner.defaultSgstRate || 9.0,
-          invoicePrefix: activeOwner.invoicePrefix || 'INV',
-          nextInvoiceNumber: activeOwner.nextInvoiceNumber || 1,
-          termsAndConditions: activeOwner.termsAndConditions || '',
-          paymentTerms: activeOwner.paymentTerms || ''
+          termsAndConditions: activeOwner.termsAndConditions || ''
         });
         setOwnerId(activeOwner.id);
       }
@@ -389,19 +383,7 @@ const BusinessSettings = () => {
               onChange={(e) => handleInputChange('defaultSgstRate', parseFloat(e.target.value) || 0)}
               error={errors.defaultSgstRate}
             />
-            <Input
-              label="Invoice Prefix"
-              value={formData.invoicePrefix}
-              onChange={(e) => handleInputChange('invoicePrefix', e.target.value)}
-              placeholder="e.g., INV"
-            />
-            <Input
-              label="Next Invoice Number"
-              type="number"
-              min="1"
-              value={formData.nextInvoiceNumber}
-              onChange={(e) => handleInputChange('nextInvoiceNumber', parseInt(e.target.value) || 1)}
-            />
+
           </div>
           
           <div className="mt-4 space-y-4">
@@ -461,18 +443,7 @@ const BusinessSettings = () => {
               />
             </div>
             
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Payment Terms
-              </label>
-              <textarea
-                value={formData.paymentTerms}
-                onChange={(e) => handleInputChange('paymentTerms', e.target.value)}
-                rows={2}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="Payment terms (e.g., Net 30 days)"
-              />
-            </div>
+
           </div>
         </div>
 
