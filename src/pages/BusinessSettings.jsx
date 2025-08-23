@@ -47,7 +47,8 @@ const BusinessSettings = () => {
     
     defaultCgstRate: 9.0,
     defaultSgstRate: 9.0,
-    termsAndConditions: ''
+    termsAndConditions: '',
+    signatureBase64: ''
   });
 
   const [loading, setLoading] = useState(true);
@@ -94,7 +95,8 @@ const BusinessSettings = () => {
           headerName: activeOwner.headerName || '',
           defaultCgstRate: activeOwner.defaultCgstRate || 9.0,
           defaultSgstRate: activeOwner.defaultSgstRate || 9.0,
-          termsAndConditions: activeOwner.termsAndConditions || ''
+          termsAndConditions: activeOwner.termsAndConditions || '',
+          signatureBase64: activeOwner.signatureBase64 || ''
         });
         setOwnerId(activeOwner.id);
       }
@@ -117,6 +119,40 @@ const BusinessSettings = () => {
       setErrors(prev => ({
         ...prev,
         [field]: null
+      }));
+    }
+  };
+
+  const handleSignatureUpload = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      // Check file size (2MB limit)
+      if (file.size > 2 * 1024 * 1024) {
+        alert('File size must be less than 2MB');
+        return;
+      }
+      
+      // Check file type
+      if (!file.type.startsWith('image/')) {
+        alert('Please select an image file');
+        return;
+      }
+      
+      // Create a temporary preview
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const base64String = event.target.result.split(',')[1]; // Remove data:image/...;base64, prefix
+        setFormData(prev => ({
+          ...prev,
+          signatureBase64: base64String
+        }));
+      };
+      reader.readAsDataURL(file);
+      
+      // Store the file for later upload
+      setFormData(prev => ({
+        ...prev,
+        signatureFile: file
       }));
     }
   };
@@ -158,11 +194,30 @@ const BusinessSettings = () => {
       setSaving(true);
       setSuccess('');
       
+      // Handle file upload if there's a new signature file
+      let finalFormData = { ...formData };
+      if (formData.signatureFile) {
+        const formDataToSend = new FormData();
+        formDataToSend.append('file', formData.signatureFile);
+        
+        const response = await fetch('http://localhost:8080/api/files/upload/signature', {
+          method: 'POST',
+          body: formDataToSend,
+        });
+        
+        if (response.ok) {
+          const signatureBase64 = await response.text();
+          finalFormData.signatureBase64 = signatureBase64;
+        } else {
+          throw new Error('Failed to upload signature file');
+        }
+      }
+      
       if (ownerId) {
-        await ownerAPI.update(ownerId, formData);
+        await ownerAPI.update(ownerId, finalFormData);
         setSuccess('Business settings updated successfully!');
       } else {
-        const newOwner = await ownerAPI.create(formData);
+        const newOwner = await ownerAPI.create(finalFormData);
         setOwnerId(newOwner.id);
         setSuccess('Business settings created successfully!');
       }
@@ -430,6 +485,34 @@ const BusinessSettings = () => {
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 placeholder="Business terms and conditions"
               />
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Signature
+              </label>
+              <div className="flex items-center space-x-4">
+                {formData.signatureBase64 && (
+                  <div className="flex-shrink-0">
+                    <img 
+                      src={`data:image/jpeg;base64,${formData.signatureBase64}`}
+                      alt="Current signature" 
+                      className="w-24 h-16 object-contain border border-gray-300 rounded"
+                    />
+                  </div>
+                )}
+                <div className="flex-1">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => handleSignatureUpload(e)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:border-transparent"
+                  />
+                  <p className="text-sm text-gray-500 mt-1">
+                    Upload signature image (JPG, PNG, GIF). Max size: 2MB
+                  </p>
+                </div>
+              </div>
             </div>
             
 
