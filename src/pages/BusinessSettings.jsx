@@ -404,18 +404,7 @@ const BusinessSettings = () => {
               />
             </div>
             
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Invoice Header Text
-              </label>
-              <textarea
-                value={formData.invoiceHeaderText}
-                onChange={(e) => handleInputChange('invoiceHeaderText', e.target.value)}
-                rows={2}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="Custom header text for invoices"
-              />
-            </div>
+
             
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">

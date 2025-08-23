@@ -58,7 +58,6 @@ const InvoiceForm = () => {
     items: [{
       productId: '',
       productName: '',
-      productDescription: '',
       quantity: 1,
       unitPrice: 1,
       isCustomProduct: false
@@ -91,9 +90,10 @@ const InvoiceForm = () => {
           }));
         }
         
-        // Load products
+        // Load products FIRST
         const productsData = await productAPI.getAll();
         setProducts(productsData);
+        console.log('Products loaded:', productsData);
 
         // Load business settings for default GST values
         try {
@@ -115,9 +115,71 @@ const InvoiceForm = () => {
           console.warn('Could not load business settings:', error);
         }
 
-        // Load invoice data if editing
+        // Load invoice data if editing (AFTER products are loaded)
         if (isEditing) {
           const invoiceData = await invoiceAPI.getById(id);
+          
+          // Debug logging for product data
+          console.log('Loading invoice data:', invoiceData);
+          console.log('Line items:', invoiceData.lineItems);
+          
+          // Now resolve products with the loaded products array
+          const resolvedItems = invoiceData.lineItems?.map(item => {
+            console.log('Processing item:', item);
+            
+            // Always check if the product name exists in current products list
+            let resolvedProductId = item.productId;
+            let isDeletedProduct = false;
+            
+            if (item.productName && item.productName.trim() !== '') {
+              const matchingProduct = productsData.find(p => p.name === item.productName);
+              if (matchingProduct) {
+                // Product exists in current list, use its real ID
+                resolvedProductId = matchingProduct.id;
+                console.log('Found matching product by name:', matchingProduct);
+              } else {
+                // Product not found in current list - it's deleted
+                isDeletedProduct = true;
+                console.log('Product not found in active products - likely deleted:', item.productName);
+                // Create a virtual product ID for deleted products so they can be selected in dropdown
+                resolvedProductId = `deleted_${item.productName}`;
+              }
+            }
+            
+            // Use the helper function to determine if this should be a custom product
+            const isCustom = shouldBeCustomProduct({
+              ...item,
+              productId: resolvedProductId,
+              isCustomProduct: item.isCustomProduct
+            });
+            console.log('Item custom detection:', { 
+              originalProductId: item.productId, 
+              resolvedProductId, 
+              productName: item.productName, 
+              isCustomProduct: item.isCustomProduct, 
+              calculatedIsCustom: isCustom,
+              isDeletedProduct
+            });
+            
+                          return {
+                productId: resolvedProductId,
+                productName: item.productName,
+                quantity: item.quantity,
+                unitPrice: item.unitPrice,
+                // For deleted products, don't mark as custom initially so they show in dropdown
+                isCustomProduct: isCustom
+              };
+          }) || [{
+            productId: '',
+            productName: '',
+            productDescription: '',
+            quantity: 1,
+            unitPrice: 1,
+            isCustomProduct: false
+          }];
+          
+          console.log('Resolved items:', resolvedItems);
+          
           setFormData(prev => ({
             ...prev,
             customerName: invoiceData.customerName || '',
@@ -135,21 +197,7 @@ const InvoiceForm = () => {
             transportChargesApplicable: !!(invoiceData.transportCharges && invoiceData.transportCharges > 0),
             transportChargesLabel: invoiceData.transportChargesLabel || 'Transport Charges',
             transportCharges: invoiceData.transportCharges,
-            items: invoiceData.lineItems?.map(item => ({
-              productId: item.productId,
-              productName: item.productName,
-              productDescription: item.productDescription || '',
-              quantity: item.quantity,
-              unitPrice: item.unitPrice,
-              isCustomProduct: item.isCustomProduct || false
-            })) || [{
-              productId: '',
-              productName: '',
-              productDescription: '',
-              quantity: 1,
-              unitPrice: 1,
-              isCustomProduct: false
-            }]
+            items: resolvedItems
           }));
         }
       } catch (error) {
@@ -181,6 +229,29 @@ const InvoiceForm = () => {
       });
     }
   }, [loading, formData.items.length]);
+
+  // Note: Product resolution is now handled in the main loadData function
+  // to ensure products are loaded before invoice data processing
+
+  // Debug logging for form data changes
+  useEffect(() => {
+    if (isEditing && formData.items.length > 0) {
+      console.log('Form data updated:', formData);
+      console.log('Items with product info:', formData.items.map(item => ({
+        productId: item.productId,
+        productName: item.productName,
+        isCustomProduct: item.isCustomProduct
+      })));
+      
+      // Log available products for each item
+      formData.items.forEach((item, index) => {
+        const availableProducts = getAvailableProducts(index);
+        console.log(`Available products for item ${index}:`, availableProducts);
+        console.log(`Item ${index} should have productId:`, item.productId);
+        console.log(`Available products with matching ID:`, availableProducts.filter(p => p.id.toString() === item.productId?.toString()));
+      });
+    }
+  }, [formData.items, isEditing]);
 
   // Handle form field changes
   const handleInputChange = (field, value) => {
@@ -221,23 +292,112 @@ const InvoiceForm = () => {
 
   // Handle product selection
   const handleProductSelect = (index, productId) => {
-    const selectedProduct = products.find(p => p.id === parseInt(productId));
+    // Get available products including deleted ones
+    const availableProducts = getAvailableProducts(index);
+    const selectedProduct = availableProducts.find(p => p.id.toString() === productId.toString());
+    
     if (selectedProduct) {
-      handleItemChange(index, 'productId', productId);
-      handleItemChange(index, 'productName', selectedProduct.name);
+      if (selectedProduct.isDeleted) {
+        // Handle deleted product selection
+        // Keep the virtual ID so the dropdown shows the correct selection
+        handleItemChange(index, 'productId', productId);
+        handleItemChange(index, 'productName', selectedProduct.name);
+        handleItemChange(index, 'unitPrice', selectedProduct.price || 1);
+        // Keep as custom product since it's deleted
+        handleItemChange(index, 'isCustomProduct', true);
+      } else {
+        // Handle active product selection
+        handleItemChange(index, 'productId', productId);
+        handleItemChange(index, 'productName', selectedProduct.name);
+        // Uncheck custom product when a real product is selected
+        handleItemChange(index, 'isCustomProduct', false);
+      }
     }
   };
 
-  // Get available products for a specific item (excluding already selected ones)
+  // Check if a product name is already used in the current invoice (for validation)
+  const isProductNameUsed = (productName, currentIndex) => {
+    return formData.items.some((item, index) => 
+      index !== currentIndex && 
+      item.productName === productName
+    );
+  };
+
+  // Helper function to determine if an item should be marked as custom
+  const shouldBeCustomProduct = (item) => {
+    // If it's already marked as custom, keep it
+    if (item.isCustomProduct) return true;
+    
+    // If it has no productId but has a name, it might be custom
+    if (!item.productId && item.productName && item.productName.trim() !== '') return true;
+    
+    // If it has a virtual deleted product ID, it's not custom initially
+    if (item.productId && item.productId.toString().startsWith('deleted_')) return false;
+    
+    // If it has a real product ID, it's not custom
+    if (item.productId && !item.productId.toString().startsWith('deleted_')) return false;
+    
+    return false;
+  };
+
+  // Get available products for a specific item (including deleted products from current invoice)
   const getAvailableProducts = (currentIndex) => {
-    return products.filter(product => {
-      // Check if this product is already selected in another item
-      return !formData.items.some((item, index) => 
-        index !== currentIndex && 
-        item.productId === product.id.toString() && 
-        !item.isCustomProduct
-      );
-    });
+    // In edit mode, we need to include deleted products that are already in the invoice
+    if (isEditing) {
+      console.log(`Getting available products for item ${currentIndex} in edit mode`);
+      console.log('Current products:', products);
+      console.log('Current form items:', formData.items);
+      
+      // Get all products (active + deleted ones from current invoice)
+      const allAvailableProducts = [...products];
+      
+      // Add deleted products from current invoice that aren't in the active products list
+      // We need to add ALL deleted products, not just the ones that aren't the current index
+      formData.items.forEach((item, index) => {
+        if (item.productName && item.productName.trim() !== '') {
+          // Check if this product name exists in active products
+          const existsInActive = products.some(p => p.name === item.productName);
+          
+          if (!existsInActive) {
+            // This is a deleted product, add it as a virtual product
+            // Use the same virtual ID format as created during loading
+            const virtualProduct = {
+              id: `deleted_${item.productName}`, // Virtual ID for deleted products
+              name: item.productName,
+              price: item.unitPrice,
+              isDeleted: true // Flag to identify deleted products
+            };
+            
+            // Only add if not already in the list
+            if (!allAvailableProducts.some(p => p.name === item.productName)) {
+              allAvailableProducts.push(virtualProduct);
+              console.log('Added deleted product to available list:', virtualProduct);
+            } else {
+              console.log('Deleted product already exists in list:', item.productName);
+            }
+          } else {
+            console.log('Product exists in active list:', item.productName);
+          }
+        }
+      });
+      
+      console.log('Final available products:', allAvailableProducts);
+      
+      // In edit mode, allow all products to be selected (including duplicates)
+      // This allows users to recreate the original invoice structure
+      return allAvailableProducts;
+    } else {
+      // In create mode, use the original logic (prevent duplicates)
+      return products.filter(product => {
+        // Check if this product is already selected in another item
+        return !formData.items.some((item, index) => 
+          index !== currentIndex && 
+          item.productId && 
+          item.productId.toString() === product.id.toString() && 
+          !item.isCustomProduct
+        );
+      });
+    }
   };
 
   // Add new line item
@@ -247,7 +407,6 @@ const InvoiceForm = () => {
       items: [...prev.items, {
         productId: '',
         productName: '',
-        productDescription: '',
         quantity: 1,
         unitPrice: 1,
         isCustomProduct: false
@@ -469,7 +628,6 @@ const InvoiceForm = () => {
         items: formData.items.map(item => ({
           productId: item.isCustomProduct ? null : (item.productId ? parseInt(item.productId) : null),
           productName: item.productName,
-          productDescription: item.productDescription,
           quantity: parseInt(item.quantity),
           unitPrice: parseFloat(item.unitPrice),
           isCustomProduct: item.isCustomProduct
@@ -767,14 +925,14 @@ const InvoiceForm = () => {
                           Product *
                         </label>
                         <select
-                          value={item.productId}
+                          value={item.productId || ''}
                           onChange={(e) => handleProductSelect(index, e.target.value)}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500"
                         >
                           <option value="">Select a product</option>
                           {getAvailableProducts(index).map(product => (
                             <option key={product.id} value={product.id}>
-                              {product.name}
+                              {product.name}{product.isDeleted ? ' (Deleted)' : ''}
                             </option>
                           ))}
                         </select>
@@ -831,7 +989,7 @@ const InvoiceForm = () => {
                       </p>
                       {item.isCustomProduct && (
                         <span className="inline-block bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full mt-1">
-                          Custom
+                          Custom{item.productId && item.productId.toString().startsWith('deleted_') ? ' (Deleted)' : ''}
                         </span>
                       )}
                     </div>
@@ -848,15 +1006,7 @@ const InvoiceForm = () => {
                   </div>
                 </div>
 
-                {/* Product Description */}
-                <div className="mt-4">
-                  <Input
-                    label="Description"
-                    value={item.productDescription}
-                    onChange={(e) => handleItemChange(index, 'productDescription', e.target.value)}
-                    placeholder="Product description (optional)"
-                  />
-                </div>
+
                 
                 {/* Add horizontal line below each item */}
                 <hr className="my-6 border-gray-300" />

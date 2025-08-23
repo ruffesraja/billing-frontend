@@ -6,7 +6,7 @@ import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import Table from '../components/ui/Table';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
-import Modal from '../components/ui/Modal';
+
 import DateFilter, { DATE_FILTER_OPTIONS } from '../components/DateFilter';
 
 // Simple icons
@@ -73,7 +73,7 @@ const Invoices = () => {
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
   const [showCustomDateRange, setShowCustomDateRange] = useState(false);
-  const [deleteConfirm, setDeleteConfirm] = useState(null);
+
 
   // Debounced search function
   const debouncedSearch = debounce((term) => {
@@ -118,10 +118,17 @@ const Invoices = () => {
   };
 
   const handleDeleteInvoice = async (id) => {
+    // Get invoice details for confirmation message
+    const invoice = invoices.find(inv => inv.id === id);
+    if (!invoice) return;
+    
+    if (!window.confirm(`Are you sure you want to delete invoice "${invoice.invoiceNumber}"?`)) {
+      return;
+    }
+
     try {
       await invoiceAPI.delete(id);
       await fetchInvoices();
-      setDeleteConfirm(null);
     } catch (err) {
       setError(err.message);
     }
@@ -295,7 +302,7 @@ const Invoices = () => {
               <Table.Head>Status</Table.Head>
               <Table.Head>Invoice Date</Table.Head>
               <Table.Head>Due Date</Table.Head>
-              <Table.Head>Actions</Table.Head>
+              <Table.Head className="w-32">Actions</Table.Head>
             </Table.Row>
           </Table.Header>
           <Table.Body>
@@ -331,21 +338,22 @@ const Invoices = () => {
                   <Table.Cell>{formatDate(invoice.invoiceDate)}</Table.Cell>
                   <Table.Cell>{formatDate(invoice.dueDate)}</Table.Cell>
                   <Table.Cell>
-                    <div className="flex space-x-2">
+                    <div className="flex items-center justify-start space-x-2">
                       <Link to={`/invoices/${invoice.id}`}>
-                        <Button size="sm" variant="outline">
+                        <Button size="sm" variant="outline" className="min-w-[32px] h-8 p-0">
                           <EyeIcon />
                         </Button>
                       </Link>
                       <Link to={`/invoices/${invoice.id}/edit`}>
-                        <Button size="sm" variant="outline">
+                        <Button size="sm" variant="outline" className="min-w-[32px] h-8 p-0">
                           <EditIcon />
                         </Button>
                       </Link>
                       <Button
                         size="sm"
                         variant="danger"
-                        onClick={() => setDeleteConfirm(invoice)}
+                        className="min-w-[32px] h-8 p-0"
+                        onClick={() => handleDeleteInvoice(invoice.id)}
                       >
                         <TrashIcon />
                       </Button>
@@ -358,34 +366,7 @@ const Invoices = () => {
         </Table>
       </div>
 
-      {/* Delete Confirmation Modal */}
-      <Modal
-        isOpen={!!deleteConfirm}
-        onClose={() => setDeleteConfirm(null)}
-        title="Confirm Delete"
-        size="sm"
-      >
-        <div className="space-y-4">
-          <p className="text-sm text-gray-600">
-            Are you sure you want to delete invoice <strong>{deleteConfirm?.invoiceNumber}</strong>? 
-            This action cannot be undone.
-          </p>
-          <div className="flex space-x-3 justify-end">
-            <Button
-              variant="outline"
-              onClick={() => setDeleteConfirm(null)}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="danger"
-              onClick={() => handleDeleteInvoice(deleteConfirm.id)}
-            >
-              Delete
-            </Button>
-          </div>
-        </div>
-      </Modal>
+
     </div>
   );
 };
