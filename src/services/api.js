@@ -1,12 +1,8 @@
+import API_CONFIG from '../config/api.js';
+
 // Dynamic base URL based on environment
 const getApiBaseUrl = () => {
-  // In production (served from Spring Boot), use relative URLs
-  if (process.env.NODE_ENV === 'production') {
-    return '/api';
-  }
-  
-  // In development, use full URL to Spring Boot
-  return 'http://localhost:8080/api';
+  return API_CONFIG.getBaseUrl();
 };
 
 const API_BASE_URL = getApiBaseUrl();
@@ -64,7 +60,8 @@ const apiRequest = async (endpoint, options = {}) => {
     
     // Handle network errors
     if (error.name === 'TypeError' && error.message.includes('fetch')) {
-      throw new Error('Unable to connect to the server. Please ensure the backend is running on http://localhost:8080');
+      const baseUrl = getApiBaseUrl();
+      throw new Error(`Unable to connect to the server. Please ensure the backend is running on ${baseUrl}`);
     }
     
     throw error;

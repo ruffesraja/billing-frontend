@@ -3,6 +3,7 @@ import { ownerAPI } from '../services/api';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
+import API_CONFIG from '../config/api';
 
 const BusinessSettings = () => {
   const [formData, setFormData] = useState({
@@ -58,6 +59,8 @@ const BusinessSettings = () => {
   const [ownerId, setOwnerId] = useState(null);
 
   useEffect(() => {
+    // Test API configuration on component load
+    API_CONFIG.testConfiguration();
     loadOwnerData();
   }, []);
 
@@ -200,7 +203,10 @@ const BusinessSettings = () => {
         const formDataToSend = new FormData();
         formDataToSend.append('file', formData.signatureFile);
         
-        const response = await fetch('http://localhost:8080/api/files/upload/signature', {
+        // Use centralized API configuration for proper URL handling
+        const apiUrl = `${API_CONFIG.getBaseUrl()}/files/upload/signature`;
+        console.log('Uploading signature to:', apiUrl);
+        const response = await fetch(apiUrl, {
           method: 'POST',
           body: formDataToSend,
         });

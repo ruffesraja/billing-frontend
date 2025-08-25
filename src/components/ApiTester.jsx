@@ -321,7 +321,7 @@ const ApiTester = () => {
         <ul className="text-sm text-blue-800 space-y-1">
           <li>• Use this panel to test individual API operations</li>
           <li>• Check the browser console (F12) for detailed error logs</li>
-          <li>• Ensure your backend is running on http://localhost:8080</li>
+          <li>• Ensure your backend is running and accessible</li>
           <li>• Green results indicate success, red results indicate errors</li>
         </ul>
       </div>

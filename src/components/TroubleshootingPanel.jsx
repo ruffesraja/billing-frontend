@@ -23,7 +23,7 @@ const TroubleshootingPanel = () => {
       // Test 2: CORS check
       console.log('Testing CORS...');
       try {
-        const response = await fetch('http://localhost:8080/api/customers', {
+        const response = await fetch('/api/customers', {
           method: 'OPTIONS',
           headers: {
             'Origin': window.location.origin,
@@ -54,7 +54,7 @@ const TroubleshootingPanel = () => {
 
       for (const endpoint of endpoints) {
         try {
-          const response = await fetch(`http://localhost:8080/api${endpoint.url}`);
+          const response = await fetch(`/api${endpoint.url}`);
           endpointTests.push({
             name: endpoint.name,
             success: response.ok,
@@ -110,7 +110,7 @@ const TroubleshootingPanel = () => {
             <span className="text-xl">{getStatusIcon(tests.connection?.success)}</span>
             <div>
               <p className="font-medium text-gray-900">Backend Connection</p>
-              <p className="text-sm text-gray-600">Testing connection to http://localhost:8080</p>
+              <p className="text-sm text-gray-600">Testing connection to backend API</p>
             </div>
           </div>
           <div className={`text-sm ${getStatusColor(tests.connection?.success)}`}>
@@ -179,7 +179,7 @@ const TroubleshootingPanel = () => {
         <h4 className="font-medium text-gray-900 mb-2">System Information</h4>
         <div className="text-sm text-gray-600 space-y-1">
           <p>Frontend URL: {window.location.origin}</p>
-          <p>Backend URL: http://localhost:8080</p>
+          <p>Backend URL: Dynamic (based on environment)</p>
           <p>User Agent: {navigator.userAgent.split(' ')[0]}</p>
           <p>Timestamp: {new Date().toISOString()}</p>
         </div>
